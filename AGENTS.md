@@ -1,5 +1,7 @@
 # VoxScript - Agent Guide
 
+**使用中文回复**
+
 ## Quick Start
 ```bash
 uv sync

@@ -7,7 +7,7 @@ language = ""
 [llm]
 model = "gpt-4o"
 base_url = ""
-api_key_env_var = "OPENAI_API_KEY"
+api_key_env_var = "VOX_API_KEY"
 temperature = 0.0
 max_tokens = 4096
 response_preview_chars = 500
