@@ -74,6 +74,27 @@ force_option = click.option(
     help="Force re-extract audio and re-generate subtitle",
 )
 
+ss_option = click.option(
+    "--ss",
+    type=str,
+    default=None,
+    help="Start time (HH:MM:SS)",
+)
+
+to_option = click.option(
+    "--to",
+    type=str,
+    default=None,
+    help="End time (HH:MM:SS), requires --ss",
+)
+
+
+def parse_hms(s: str) -> float:
+    parts = list(map(int, s.split(":")))
+    if len(parts) == 3:
+        return float(parts[0] * 3600 + parts[1] * 60 + parts[2])
+    raise click.BadParameter("time must be HH:MM:SS")
+
 
 def resolve_output_dir(
     input_file: str,

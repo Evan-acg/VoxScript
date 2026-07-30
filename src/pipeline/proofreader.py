@@ -124,6 +124,8 @@ class Proofreader:
                         output_wav,
                         stream_index=opts.track_index,
                         force=opts.force,
+                        ss=opts.ss,
+                        to=opts.to,
                         on_progress=on_progress,
                     )
                     audio_path = output_wav

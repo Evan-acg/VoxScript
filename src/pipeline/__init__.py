@@ -48,6 +48,8 @@ class AudioExtractor(Protocol):
         *,
         stream_index: int | None = None,
         force: bool = False,
+        ss: float | None = None,
+        to: float | None = None,
         on_progress: ProgressCallback = null_callback,
     ) -> MediaInfo: ...
 
@@ -84,6 +86,8 @@ class Options:
     keep_audio: bool = False
     track_index: int | None = None
     force: bool = False
+    ss: float | None = None
+    to: float | None = None
 
 
 class VoxScriptPipeline:
@@ -132,6 +136,8 @@ class VoxScriptPipeline:
                     str(input_path), str(output_wav),
                     stream_index=opts.track_index,
                     force=opts.force,
+                    ss=opts.ss,
+                    to=opts.to,
                     on_progress=on_progress,
                 )
 

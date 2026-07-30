@@ -14,7 +14,10 @@ from .common import (
     language_option,
     model_option,
     output_dir_option,
+    parse_hms,
     resolve_output_dir,
+    ss_option,
+    to_option,
     track_option,
 )
 
@@ -28,6 +31,8 @@ from .common import (
 @output_dir_option
 @keep_audio_option
 @force_option
+@ss_option
+@to_option
 @click.option(
     "--list-tracks",
     is_flag=True,
@@ -43,9 +48,14 @@ def trans(
     output_dir: str,
     keep_audio: bool,
     force: bool,
+    ss: str | None,
+    to: str | None,
     list_tracks: bool,
 ) -> None:
     """Transcribe video/audio to subtitle (SRT)."""
+    if to is not None and ss is None:
+        raise click.UsageError("--to requires --ss")
+
     extractor = FFmpegAudioExtractor()
 
     if is_audio_only(input_file) and list_tracks:
@@ -76,6 +86,8 @@ def trans(
         keep_audio=keep_audio,
         track_index=track_index,
         force=force,
+        ss=parse_hms(ss) if ss else None,
+        to=parse_hms(to) if to else None,
     )
 
     pipeline = VoxScriptPipeline(

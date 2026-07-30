@@ -93,11 +93,13 @@ class FFmpegAudioExtractor:
         *,
         stream_index: int | None = None,
         force: bool = False,
+        ss: float | None = None,
+        to: float | None = None,
         on_progress: ProgressCallback = null_callback,
     ) -> MediaInfo:
         resolved_idx = self._resolve_index(video_path, stream_index)
 
-        cache_key = self._cache_key(video_path, resolved_idx)
+        cache_key = self._cache_key(video_path, resolved_idx, ss=ss, to=to)
         cache_dir = _cache_dir()
         cache_dir.mkdir(parents=True, exist_ok=True)
         cache_path = cache_dir / f"{cache_key}.wav"
@@ -112,21 +114,26 @@ class FFmpegAudioExtractor:
         output.parent.mkdir(parents=True, exist_ok=True)
 
         duration = self.get_duration(video_path)
+
+        effective = (to or duration) - (ss or 0)
         on_progress(ProgressEvent("ffprobe", 1, 1, "Video info retrieved"))
 
         cmd = [
             self._ffmpeg_path,
+        ]
+        if ss is not None:
+            cmd.extend(["-ss", str(ss)])
+        cmd.extend([
             "-i", video_path,
             "-map", f"0:{resolved_idx}",
             "-vn",
             "-acodec", get("audio", "codec", fallback="pcm_s16le"),
             "-ar", str(get_int("audio", "sample_rate", fallback=16000)),
             "-ac", str(get_int("audio", "channels", fallback=1)),
-            "-y",
-            "-progress", "pipe:",
-            "-nostats",
-            str(output),
-        ]
+        ])
+        if to is not None:
+            cmd.extend(["-to", str(to)])
+        cmd.extend(["-y", "-progress", "pipe:", "-nostats", str(output)])
 
         try:
             proc = subprocess.Popen(
@@ -136,7 +143,7 @@ class FFmpegAudioExtractor:
                 text=True,
                 encoding="utf-8",
             )
-            _track_ffmpeg_progress(proc, duration, on_progress)
+            _track_ffmpeg_progress(proc, effective, on_progress)
 
             proc.wait()
             if proc.returncode != 0:
@@ -149,9 +156,9 @@ class FFmpegAudioExtractor:
             ) from e
 
         shutil.copy2(str(output), str(cache_path))
-        on_progress(ProgressEvent("ffmpeg", duration, duration, "Audio extracted"))
+        on_progress(ProgressEvent("ffmpeg", effective, effective, "Audio extracted"))
         size_mb = output.stat().st_size / (1024 * 1024)
-        logger.info("Extracted audio: %.1fs, %.1fMB \u2192 %s", duration, size_mb, output.name)
+        logger.info("Extracted audio: %.1fs, %.1fMB \u2192 %s", effective, size_mb, output.name)
         return MediaInfo(duration=duration, path=str(output))
 
     def _resolve_index(self, video_path: str, stream_index: int | None) -> int:
@@ -190,10 +197,10 @@ class FFmpegAudioExtractor:
         )
 
     @staticmethod
-    def _cache_key(video_path: str, stream_index: int) -> str:
+    def _cache_key(video_path: str, stream_index: int, *, ss: float | None = None, to: float | None = None) -> str:
         real = os.path.realpath(video_path)
         mtime = os.path.getmtime(real)
-        raw = f"{real}|{mtime}|{stream_index}"
+        raw = f"{real}|{mtime}|{stream_index}|{ss}|{to}"
         return hashlib.md5(raw.encode()).hexdigest()
 
 
