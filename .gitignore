@@ -219,3 +219,5 @@ __marimo__/
 
 # Whisper models
 models/
+**/*.swp
+**/*.swo
