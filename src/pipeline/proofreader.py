@@ -4,7 +4,7 @@ from pathlib import Path
 
 from ..config import get
 from ..progress import ProgressCallback, ProgressEvent, null_callback
-from . import AudioExtractor, Options
+from . import AudioExtractor, Options, Segment
 from .ass_formatter import format_ass
 from .audio import is_audio_only
 from .llm import LLMClient, ProofreadError
@@ -148,6 +148,12 @@ class Proofreader:
                     device=opts.device,
                     on_progress=on_progress,
                 )
+
+                if opts.start:
+                    result.segments = [
+                        Segment(s.start + opts.start, s.end + opts.start, s.text)
+                        for s in result.segments
+                    ]
 
                 formatter = SrtFormatter()
                 ref_transcript = formatter.format(result.segments)

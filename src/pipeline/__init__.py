@@ -159,6 +159,12 @@ class VoxScriptPipeline:
                     on_progress=on_progress,
                 )
 
+        if opts.start:
+            result.segments = [
+                Segment(s.start + opts.start, s.end + opts.start, s.text)
+                for s in result.segments
+            ]
+
         subtitle_path = Path(
             opts.output_dir, f"{video_name}.{self._formatter.extension}"
         )
