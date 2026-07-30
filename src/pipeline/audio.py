@@ -181,7 +181,7 @@ class FFmpegAudioExtractor:
     def _log_stream(self, stream: AudioStream) -> None:
         ch = "stereo" if stream.channels == 2 else "mono"
         logger.info(
-            "Track #%d: %-6s  %-8s  %dkHz  %s",
+            "Track #{}: {:<6}  {:<8}  {}kHz  {}",
             stream.index,
             stream.language or "?",
             stream.codec,
