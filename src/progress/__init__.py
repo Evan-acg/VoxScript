@@ -33,6 +33,11 @@ _STAGE_LABELS: dict[str, str] = {
     "llm": "LLM校对",
     "voxscript": "输出字幕",
     "audio_check": "检查音频",
+    "align_load": "加载对齐模型",
+    "align": "强制对齐",
+    "alignment_cache": "对齐缓存",
+    "gap_asr": "缺失片段转写",
+    "transcription_cache": "转录缓存",
 }
 
 
@@ -92,8 +97,9 @@ class RichProgressReporter:
         self._log_lines.append(message)
         if len(self._log_lines) > 200:
             self._log_lines = self._log_lines[-200:]
+        visible = "\n".join(self._log_lines[-15:])
         self._layout["log"].update(
-            Panel("\n".join(self._log_lines), title="\u65e5\u5fd7", border_style="dim")
+            Panel(visible, title="日志", border_style="dim")
         )
 
     def __enter__(self) -> RichProgressReporter:
@@ -148,7 +154,8 @@ class RichProgressReporter:
                     event.stage, total=None
                 )
             task_id = self._tasks[event.stage]
-            total: float | None = event.total if event.total > 0 else None
+            is_determinate = event.total > 0
+            total: float | None = event.total if is_determinate else None
             desc = _STAGE_LABELS.get(event.stage) or event.message or event.stage
             self._progress.update(
                 task_id,
@@ -156,5 +163,8 @@ class RichProgressReporter:
                 completed=event.completed if total is not None else 0,
                 description=desc,
             )
+            if is_determinate and event.completed >= event.total:
+                self._progress.remove_task(task_id)
+                del self._tasks[event.stage]
 
         return callback

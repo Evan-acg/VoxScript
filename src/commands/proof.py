@@ -45,6 +45,12 @@ from .common import (
     default="",
     help="LLM model name (overrides config)",
 )
+@click.option(
+    "--llm-check",
+    is_flag=True,
+    default=False,
+    help="Enable LLM for translation quality assessment",
+)
 @keep_audio_option
 @force_option
 @start_option
@@ -58,12 +64,13 @@ def proof(
     device: str,
     output_dir: str,
     llm_model: str,
+    llm_check: bool,
     keep_audio: bool,
     force: bool,
     start: str | None,
     end: str | None,
 ) -> None:
-    """Proofread subtitle using LLM against audio transcription (outputs ASS)."""
+    """Proofread subtitle against audio (outputs ASS + report)."""
     if end is not None and start is None:
         raise click.UsageError("--end requires --start")
 
@@ -88,6 +95,7 @@ def proof(
         end=parse_hms(end) if end else None,
         og_start=start,
         og_end=end,
+        llm_check=llm_check,
     )
 
     proofreader = Proofreader(

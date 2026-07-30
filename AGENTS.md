@@ -2,13 +2,17 @@
 
 **使用中文回复**
 
+本项目使用uv进行包管理， 禁止直接使用python运行脚本。
+
 ## Quick Start
+
 ```bash
 uv sync
 uv run starter.py --help
 ```
 
 ## Commands
+
 - `uv sync` — install dependencies
 - `uv run starter.py -i <file>` — extract subtitle from video or audio
 - `uv add <package>` — add dependency
@@ -16,6 +20,7 @@ uv run starter.py --help
 - `uv tree` — view dependency tree
 
 ## Project Structure
+
 ```
 VoxScript/
 ├── starter.py         # Entry point
@@ -31,6 +36,7 @@ VoxScript/
 ```
 
 ## Conventions
+
 - `from __future__ import annotations` in all files
 - Type hints everywhere
 - dataclass for models (frozen when immutable)
@@ -41,11 +47,13 @@ VoxScript/
 - No comments in code (unless required)
 
 ## Tests
+
 - Tests directory: `tests/`
 - Run: `uv run pytest` (not yet configured)
 - Fixtures in `conftest.py`
 
 ## Key Dependencies
+
 - `click` — CLI framework
 - `rich` — progress bar
 - `whisperx` — speech-to-text (includes torch, faster-whisper)

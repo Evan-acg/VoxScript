@@ -158,7 +158,7 @@ class FFmpegAudioExtractor:
         shutil.copy2(str(output), str(cache_path))
         on_progress(ProgressEvent("ffmpeg", effective, effective, "Audio extracted"))
         size_mb = output.stat().st_size / (1024 * 1024)
-        logger.info("Extracted audio: %.1fs, %.1fMB \u2192 %s", effective, size_mb, output.name)
+        logger.info("Extracted audio: {:.1f}s, {:.1f}MB \u2192 {}", effective, size_mb, output.name)
         return MediaInfo(duration=duration, path=str(output))
 
     def _resolve_index(self, video_path: str, stream_index: int | None) -> int:
