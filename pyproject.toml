@@ -1,0 +1,19 @@
+[project]
+name = "voxscript"
+version = "0.1.0"
+requires-python = ">=3.12"
+dependencies = [
+    "click>=8.4.2",
+    "openai>=2.50.0",
+    "rich>=15.0.0",
+    "whisperx>=3.8.6",
+]
+
+[[tool.uv.index]]
+name = "pytorch-cu128"
+url = "https://download.pytorch.org/whl/cu128"
+priority = 100
+
+[tool.uv]
+package = false
+index-strategy = "unsafe-best-match"

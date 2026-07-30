@@ -1,0 +1,64 @@
+[defaults]
+output_dir = "./output"
+model_name = "base"
+device = "cuda"
+language = ""
+
+[llm]
+model = "gpt-4o"
+base_url = ""
+api_key_env_var = "OPENAI_API_KEY"
+temperature = 0.0
+max_tokens = 4096
+response_preview_chars = 500
+
+[ffmpeg]
+path = "ffmpeg"
+probe_path = "ffprobe"
+
+[fzf]
+path = "fzf"
+header = "Select audio track to extract:"
+
+[audio]
+sample_rate = 16000
+channels = 1
+codec = "pcm_s16le"
+cache_dir = ""
+extensions = [
+    ".mp3", ".wav", ".flac", ".m4a",
+    ".ogg", ".aac", ".opus", ".wma",
+]
+
+[whisper]
+batch_size = 8
+compute_type_cuda = "float16"
+compute_type_cpu = "float32"
+fallback_language = "en"
+min_estimate_seconds = 10
+align_cache_only = true
+
+[whisper.speed_factors]
+"tiny,cpu" = 3
+"base,cpu" = 1
+"small,cpu" = 0.5
+"medium,cpu" = 0.2
+"large,cpu" = 0.1
+"tiny,cuda" = 30
+"base,cuda" = 10
+"small,cuda" = 5
+"medium,cuda" = 2
+"large,cuda" = 1
+
+[progress]
+color_system = "truecolor"
+heartbeat_interval = 0.5
+heartbeat_timeout = 2
+max_fraction = 0.95
+
+[logging]
+level = "INFO"
+format = "%(message)s"
+name = "voxscript"
+temp_prefix = "voxscript_"
+encoding = "utf-8"
