@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import logging
 import tempfile
 import threading
 import time
@@ -8,12 +7,11 @@ from collections.abc import Callable
 from pathlib import Path
 
 import whisperx
+from loguru import logger
 
 from ..config import get, get_bool, get_float, get_int, get_section
 from ..progress import ProgressCallback, ProgressEvent, null_callback
 from . import Formatter, Segment, Transcriber, TranscriptionResult
-
-logger = logging.getLogger("voxscript")
 
 
 class TranscriptionError(Exception):

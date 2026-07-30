@@ -50,17 +50,18 @@ class LLMClient:
         model: str = "gpt-4o",
         base_url: str = "",
     ) -> None:
-        env_var = get("llm", "api_key_env_var", fallback="OPENAI_API_KEY")
-        api_key = os.environ.get(env_var)
+        api_key = os.environ.get("VOX_API_KEY") or os.environ.get("OPENAI_API_KEY")
         if not api_key:
             raise ProofreadError(
-                f"{env_var} environment variable is not set"
+                "VOX_API_KEY or OPENAI_API_KEY environment variable is not set"
             )
         kwargs = {"api_key": api_key}
         if base_url:
             kwargs["base_url"] = base_url
         self._client = OpenAI(**kwargs)
         self._model = model
+        from loguru import logger
+        logger.info(f"LLM: model={model}, base_url={base_url or 'default'}")
 
     def proofread(
         self,
@@ -94,7 +95,14 @@ class LLMClient:
 
         content = response.choices[0].message.content
         if not content:
-            raise ProofreadError("LLM returned empty response")
+            reason = response.choices[0].finish_reason
+            usage_dict = dict(response.usage or {})
+            raise ProofreadError(
+                f"LLM returned empty content\n"
+                f"  model={response.model}\n"
+                f"  finish_reason={reason}\n"
+                f"  usage={usage_dict}"
+            )
 
         try:
             return _parse_json_response(content)

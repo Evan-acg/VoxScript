@@ -7,7 +7,6 @@ language = ""
 [llm]
 model = "deepseek-v4-flash"
 base_url = "https://api.deepseek.com"
-api_key_env_var = "VOX_API_KEY"
 temperature = 0.0
 max_tokens = 4096
 response_preview_chars = 500
@@ -60,7 +59,4 @@ max_fraction = 0.95
 
 [logging]
 level = "INFO"
-format = "%(message)s"
-name = "voxscript"
 temp_prefix = "voxscript_"
-encoding = "utf-8"

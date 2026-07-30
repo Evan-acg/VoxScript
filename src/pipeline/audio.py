@@ -2,18 +2,17 @@ from __future__ import annotations
 
 import hashlib
 import json
-import logging
 import os
 import shutil
 import subprocess
 import tempfile
 from pathlib import Path
 
+from loguru import logger
+
 from ..config import get, get_int, get_list
 from ..progress import ProgressCallback, ProgressEvent, null_callback
 from . import AudioStream, MediaInfo
-
-logger = logging.getLogger("voxscript")
 
 
 class AudioExtractionError(Exception):
