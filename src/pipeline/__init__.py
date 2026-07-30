@@ -92,7 +92,6 @@ class Options:
     end: float | None = None
     og_start: str | None = None
     og_end: str | None = None
-    llm_check: bool = False
 
 
 def resolve_output_path(directory: str, stem: str, suffix: str) -> Path:

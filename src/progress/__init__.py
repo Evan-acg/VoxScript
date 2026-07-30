@@ -33,11 +33,6 @@ _STAGE_LABELS: dict[str, str] = {
     "llm": "LLM校对",
     "voxscript": "输出字幕",
     "audio_check": "检查音频",
-    "align_load": "加载对齐模型",
-    "align": "强制对齐",
-    "alignment_cache": "对齐缓存",
-    "gap_asr": "缺失片段转写",
-    "transcription_cache": "转录缓存",
 }
 
 
