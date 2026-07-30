@@ -5,8 +5,8 @@ device = "cuda"
 language = ""
 
 [llm]
-model = "gpt-4o"
-base_url = ""
+model = "deepseek-v4-flash"
+base_url = "https://api.deepseek.com"
 api_key_env_var = "VOX_API_KEY"
 temperature = 0.0
 max_tokens = 4096
@@ -36,6 +36,8 @@ compute_type_cuda = "float16"
 compute_type_cpu = "float32"
 fallback_language = "en"
 min_estimate_seconds = 10
+model_dir = "models"
+local_files_only = false
 align_cache_only = true
 
 [whisper.speed_factors]

@@ -40,6 +40,9 @@ class WhisperXTranscriber:
             audio.shape[-1], sample_rate, audio_dur,
         )
 
+        model_dir_cfg = get("whisper", "model_dir")
+        download_root = str(Path(__file__).resolve().parents[2] / model_dir_cfg) if model_dir_cfg else None
+
         on_progress(
             ProgressEvent("whisperx_load", 0, 0, f"Loading model '{model_name}'...")
         )
@@ -49,6 +52,8 @@ class WhisperXTranscriber:
                 device=device,
                 compute_type=get("whisper", f"compute_type_{device}", fallback="float16" if device == "cuda" else "float32"),
                 language=language,
+                download_root=download_root,
+                local_files_only=get_bool("whisper", "local_files_only", fallback=False),
             )
         except Exception as e:
             raise TranscriptionError(f"Failed to load model: {e}") from e

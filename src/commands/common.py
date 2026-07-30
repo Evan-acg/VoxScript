@@ -17,7 +17,7 @@ model_option = click.option(
     "-m",
     "--model",
     "model_name",
-    default=get("defaults", "model_name", fallback="base"),
+    default=get("defaults", "model_name", fallback="medium"),
     show_default=True,
     type=click.Choice(["tiny", "base", "small", "medium", "large"]),
     help="Whisper model size",
