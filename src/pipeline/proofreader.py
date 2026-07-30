@@ -101,6 +101,14 @@ class Proofreader:
             formatter = SrtFormatter()
             ref_transcript = formatter.format(result.segments)
 
+            ref_path = _Path(opts.output_dir, f"{video_name}.whisper.srt")
+            if opts.force or not ref_path.exists():
+                ref_path.parent.mkdir(parents=True, exist_ok=True)
+                ref_path.write_text(ref_transcript, encoding="utf-8")
+            on_progress(
+                ProgressEvent("proofread", 2, 4, f"Reference saved to {ref_path.name}")
+            )
+
         on_progress(
             ProgressEvent("llm", 0, 0, "LLM proofreading...")
         )
