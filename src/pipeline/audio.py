@@ -93,13 +93,13 @@ class FFmpegAudioExtractor:
         *,
         stream_index: int | None = None,
         force: bool = False,
-        ss: float | None = None,
-        to: float | None = None,
+        start: float | None = None,
+        end: float | None = None,
         on_progress: ProgressCallback = null_callback,
     ) -> MediaInfo:
         resolved_idx = self._resolve_index(video_path, stream_index)
 
-        cache_key = self._cache_key(video_path, resolved_idx, ss=ss, to=to)
+        cache_key = self._cache_key(video_path, resolved_idx, start=start, end=end)
         cache_dir = _cache_dir()
         cache_dir.mkdir(parents=True, exist_ok=True)
         cache_path = cache_dir / f"{cache_key}.wav"
@@ -115,14 +115,14 @@ class FFmpegAudioExtractor:
 
         duration = self.get_duration(video_path)
 
-        effective = (to or duration) - (ss or 0)
+        effective = (end or duration) - (start or 0)
         on_progress(ProgressEvent("ffprobe", 1, 1, "Video info retrieved"))
 
         cmd = [
             self._ffmpeg_path,
         ]
-        if ss is not None:
-            cmd.extend(["-ss", str(ss)])
+        if start is not None:
+            cmd.extend(["-ss", str(start)])
         cmd.extend([
             "-i", video_path,
             "-map", f"0:{resolved_idx}",
@@ -131,8 +131,8 @@ class FFmpegAudioExtractor:
             "-ar", str(get_int("audio", "sample_rate", fallback=16000)),
             "-ac", str(get_int("audio", "channels", fallback=1)),
         ])
-        if to is not None:
-            cmd.extend(["-to", str(to)])
+        if end is not None:
+            cmd.extend(["-to", str(end)])
         cmd.extend(["-y", "-progress", "pipe:", "-nostats", str(output)])
 
         try:
@@ -197,10 +197,10 @@ class FFmpegAudioExtractor:
         )
 
     @staticmethod
-    def _cache_key(video_path: str, stream_index: int, *, ss: float | None = None, to: float | None = None) -> str:
+    def _cache_key(video_path: str, stream_index: int, *, start: float | None = None, end: float | None = None) -> str:
         real = os.path.realpath(video_path)
         mtime = os.path.getmtime(real)
-        raw = f"{real}|{mtime}|{stream_index}|{ss}|{to}"
+        raw = f"{real}|{mtime}|{stream_index}|{start}|{end}"
         return hashlib.md5(raw.encode()).hexdigest()
 
 

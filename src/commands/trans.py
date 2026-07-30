@@ -8,6 +8,7 @@ from ..pipeline.subtitle import SrtFormatter, WhisperXTranscriber
 from ..progress import RichProgressReporter
 from .common import (
     device_option,
+    end_option,
     force_option,
     input_option,
     keep_audio_option,
@@ -16,8 +17,7 @@ from .common import (
     output_dir_option,
     parse_hms,
     resolve_output_dir,
-    ss_option,
-    to_option,
+    start_option,
     track_option,
 )
 
@@ -31,8 +31,8 @@ from .common import (
 @output_dir_option
 @keep_audio_option
 @force_option
-@ss_option
-@to_option
+@start_option
+@end_option
 @click.option(
     "--list-tracks",
     is_flag=True,
@@ -48,13 +48,13 @@ def trans(
     output_dir: str,
     keep_audio: bool,
     force: bool,
-    ss: str | None,
-    to: str | None,
+    start: str | None,
+    end: str | None,
     list_tracks: bool,
 ) -> None:
     """Transcribe video/audio to subtitle (SRT)."""
-    if to is not None and ss is None:
-        raise click.UsageError("--to requires --ss")
+    if end is not None and start is None:
+        raise click.UsageError("--end requires --start")
 
     extractor = FFmpegAudioExtractor()
 
@@ -86,8 +86,8 @@ def trans(
         keep_audio=keep_audio,
         track_index=track_index,
         force=force,
-        ss=parse_hms(ss) if ss else None,
-        to=parse_hms(to) if to else None,
+        start=parse_hms(start) if start else None,
+        end=parse_hms(end) if end else None,
     )
 
     pipeline = VoxScriptPipeline(

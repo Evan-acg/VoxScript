@@ -74,18 +74,18 @@ force_option = click.option(
     help="Force re-extract audio and re-generate subtitle",
 )
 
-ss_option = click.option(
-    "--ss",
+start_option = click.option(
+    "--start",
     type=str,
     default=None,
     help="Start time (HH:MM:SS)",
 )
 
-to_option = click.option(
-    "--to",
+end_option = click.option(
+    "--end",
     type=str,
     default=None,
-    help="End time (HH:MM:SS), requires --ss",
+    help="End time (HH:MM:SS), requires --start",
 )
 
 

@@ -11,6 +11,7 @@ from ..pipeline.subtitle import WhisperXTranscriber
 from ..progress import RichProgressReporter
 from .common import (
     device_option,
+    end_option,
     force_option,
     input_option,
     keep_audio_option,
@@ -19,8 +20,7 @@ from .common import (
     output_dir_option,
     parse_hms,
     resolve_output_dir,
-    ss_option,
-    to_option,
+    start_option,
     track_option,
 )
 
@@ -47,8 +47,8 @@ from .common import (
 )
 @keep_audio_option
 @force_option
-@ss_option
-@to_option
+@start_option
+@end_option
 def proof(
     input_file: str,
     subtitle_file: str,
@@ -60,12 +60,12 @@ def proof(
     llm_model: str,
     keep_audio: bool,
     force: bool,
-    ss: str | None,
-    to: str | None,
+    start: str | None,
+    end: str | None,
 ) -> None:
     """Proofread subtitle using LLM against audio transcription (outputs ASS)."""
-    if to is not None and ss is None:
-        raise click.UsageError("--to requires --ss")
+    if end is not None and start is None:
+        raise click.UsageError("--end requires --start")
 
     model = llm_model or get("llm", "model", fallback="gpt-4o")
     base_url = get("llm", "base_url", fallback="")
@@ -84,8 +84,8 @@ def proof(
         keep_audio=keep_audio,
         track_index=track_index,
         force=force,
-        ss=parse_hms(ss) if ss else None,
-        to=parse_hms(to) if to else None,
+        start=parse_hms(start) if start else None,
+        end=parse_hms(end) if end else None,
     )
 
     proofreader = Proofreader(
