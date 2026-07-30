@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 import click
 
 from ..config import get
@@ -71,3 +73,21 @@ force_option = click.option(
     default=False,
     help="Force re-extract audio and re-generate subtitle",
 )
+
+
+def resolve_output_dir(
+    input_file: str,
+    output_dir: str,
+    subtitle_file: str | None = None,
+) -> str:
+    default = get("defaults", "output_dir", fallback="./output")
+    if output_dir and str(output_dir) != default:
+        return str(output_dir)
+    video_dir = Path(input_file).parent
+    if video_dir.is_dir():
+        return str(video_dir)
+    if subtitle_file:
+        sub_dir = Path(subtitle_file).parent
+        if sub_dir.is_dir():
+            return str(sub_dir)
+    return default

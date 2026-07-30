@@ -14,6 +14,7 @@ from .common import (
     language_option,
     model_option,
     output_dir_option,
+    resolve_output_dir,
     track_option,
 )
 
@@ -65,6 +66,8 @@ def trans(
             )
         return
 
+    output_dir = resolve_output_dir(input_file, output_dir)
+
     opts = Options(
         model_name=model_name,
         language=language,
@@ -82,4 +85,6 @@ def trans(
     )
 
     with RichProgressReporter() as reporter:
-        pipeline.run(input_file, opts, on_progress=reporter.as_callback())
+        result = pipeline.run(input_file, opts, on_progress=reporter.as_callback())
+
+    print(f"\nSubtitle saved to: {result}")

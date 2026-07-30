@@ -17,6 +17,7 @@ from .common import (
     language_option,
     model_option,
     output_dir_option,
+    resolve_output_dir,
     track_option,
 )
 
@@ -63,6 +64,8 @@ def proof(
     transcriber = WhisperXTranscriber()
     llm_client = LLMClient(model=model, base_url=base_url)
 
+    output_dir = resolve_output_dir(input_file, output_dir, subtitle_file)
+
     opts = Options(
         model_name=model_name,
         language=language,
@@ -80,9 +83,11 @@ def proof(
     )
 
     with RichProgressReporter() as reporter:
-        proofreader.run(
+        result = proofreader.run(
             input_file,
             subtitle_file,
             opts,
             on_progress=reporter.as_callback(),
         )
+
+    print(f"\nResult saved to: {result}")
