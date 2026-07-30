@@ -1,0 +1,14 @@
+[Script Info]
+Title: Proofread Subtitles
+ScriptType: v4.00+
+Collisions: Normal
+PlayDepth: 0
+
+[V4+ Styles]
+Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
+Style: Default,Microsoft YaHei,11,&H00F2F2F2,&H0000FFFF,&H000F0F0F,&H80000000,0,0,0,0,100,100,0.6,0,1,1,1.2,2,20,20,5,134
+Style: Original,Arial,12,&H00D7E3E8,&H0000FFFF,&H00222222,&H00000000,0,0,0,0,100,100,0.2,0,1,1,1,2,20,20,11,1
+Style: 注释,微软雅黑,18,&H00FFFFFF,&HFF000000,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,0,0.5,8,0,0,5,1
+
+[Events]
+Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
