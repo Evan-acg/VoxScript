@@ -4,7 +4,7 @@ from pathlib import Path
 
 from ..config import get
 from ..progress import ProgressCallback, ProgressEvent, null_callback
-from . import AudioExtractor, Options, Segment
+from . import AudioExtractor, Options, Segment, resolve_output_path
 from .ass_formatter import format_ass
 from .audio import is_audio_only
 from .llm import LLMClient, ProofreadError
@@ -53,7 +53,7 @@ class Proofreader:
         from pathlib import Path as _Path
 
         video_name = _Path(video_path).stem
-        output_path = _Path(opts.output_dir, f"{video_name}.ass")
+        output_path = resolve_output_path(opts.output_dir, video_name, ".ass")
 
         on_progress(
             ProgressEvent("proofread", 0, 4, "Parsing input subtitle...")

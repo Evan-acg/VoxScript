@@ -4,6 +4,8 @@ import shutil
 from abc import abstractmethod
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from datetime import datetime
+from pathlib import Path
 from typing import Protocol
 
 from ..config import get
@@ -92,6 +94,15 @@ class Options:
     og_end: str | None = None
 
 
+def resolve_output_path(directory: str, stem: str, suffix: str) -> Path:
+    base = Path(directory)
+    candidate = base / f"{stem}{suffix}"
+    if not candidate.exists():
+        return candidate
+    ts = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    return base / f"{stem}.{ts}{suffix}"
+
+
 class VoxScriptPipeline:
     def __init__(
         self,
@@ -165,8 +176,8 @@ class VoxScriptPipeline:
                 for s in result.segments
             ]
 
-        subtitle_path = Path(
-            opts.output_dir, f"{video_name}.{self._formatter.extension}"
+        subtitle_path = resolve_output_path(
+            opts.output_dir, video_name, f".{self._formatter.extension}"
         )
 
         if not opts.force and subtitle_path.exists():
