@@ -24,10 +24,7 @@ sample_rate = 16000
 channels = 1
 codec = "pcm_s16le"
 cache_dir = ""
-extensions = [
-    ".mp3", ".wav", ".flac", ".m4a",
-    ".ogg", ".aac", ".opus", ".wma",
-]
+extensions = [".mp3", ".wav", ".flac", ".m4a", ".ogg", ".aac", ".opus", ".wma"]
 
 [whisper]
 batch_size = 8

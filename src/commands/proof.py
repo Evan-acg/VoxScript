@@ -11,6 +11,7 @@ from ..pipeline.subtitle import WhisperXTranscriber
 from ..progress import RichProgressReporter
 from .common import (
     device_option,
+    force_option,
     input_option,
     keep_audio_option,
     language_option,
@@ -41,6 +42,7 @@ from .common import (
     help="LLM model name (overrides config)",
 )
 @keep_audio_option
+@force_option
 def proof(
     input_file: str,
     subtitle_file: str,
@@ -51,6 +53,7 @@ def proof(
     output_dir: str,
     llm_model: str,
     keep_audio: bool,
+    force: bool,
 ) -> None:
     """Proofread subtitle using LLM against audio transcription (outputs ASS)."""
     model = llm_model or get("llm", "model", fallback="gpt-4o")
@@ -67,6 +70,7 @@ def proof(
         output_dir=output_dir,
         keep_audio=keep_audio,
         track_index=track_index,
+        force=force,
     )
 
     proofreader = Proofreader(

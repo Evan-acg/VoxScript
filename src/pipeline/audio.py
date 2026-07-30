@@ -92,6 +92,7 @@ class FFmpegAudioExtractor:
         output_path: str,
         *,
         stream_index: int | None = None,
+        force: bool = False,
         on_progress: ProgressCallback = null_callback,
     ) -> MediaInfo:
         resolved_idx = self._resolve_index(video_path, stream_index)
@@ -101,7 +102,7 @@ class FFmpegAudioExtractor:
         cache_dir.mkdir(parents=True, exist_ok=True)
         cache_path = cache_dir / f"{cache_key}.wav"
 
-        if cache_path.exists():
+        if not force and cache_path.exists():
             on_progress(ProgressEvent("cache", 1, 1, "Using cached audio"))
             shutil.copy2(str(cache_path), str(output_path))
             duration = self.get_duration(video_path)

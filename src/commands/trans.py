@@ -8,6 +8,7 @@ from ..pipeline.subtitle import SrtFormatter, WhisperXTranscriber
 from ..progress import RichProgressReporter
 from .common import (
     device_option,
+    force_option,
     input_option,
     keep_audio_option,
     language_option,
@@ -25,6 +26,7 @@ from .common import (
 @device_option
 @output_dir_option
 @keep_audio_option
+@force_option
 @click.option(
     "--list-tracks",
     is_flag=True,
@@ -39,6 +41,7 @@ def trans(
     device: str,
     output_dir: str,
     keep_audio: bool,
+    force: bool,
     list_tracks: bool,
 ) -> None:
     """Transcribe video/audio to subtitle (SRT)."""
@@ -69,6 +72,7 @@ def trans(
         output_dir=output_dir,
         keep_audio=keep_audio,
         track_index=track_index,
+        force=force,
     )
 
     pipeline = VoxScriptPipeline(

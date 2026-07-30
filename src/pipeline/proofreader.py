@@ -34,6 +34,13 @@ class Proofreader:
         from pathlib import Path as _Path
 
         video_name = _Path(video_path).stem
+        output_path = _Path(opts.output_dir, f"{video_name}.ass")
+
+        if not opts.force and output_path.exists():
+            on_progress(
+                ProgressEvent("proofread", 4, 4, f"Using cached subtitle {output_path}")
+            )
+            return str(output_path)
 
         on_progress(
             ProgressEvent("proofread", 0, 4, "Parsing input subtitle...")
@@ -59,6 +66,7 @@ class Proofreader:
                 video_path,
                 str(output_wav),
                 stream_index=opts.track_index,
+                force=opts.force,
                 on_progress=on_progress,
             )
             audio_path = str(output_wav)
@@ -78,7 +86,7 @@ class Proofreader:
         ref_transcript = formatter.format(result.segments)
 
         on_progress(
-            ProgressEvent("proofread", 3, 4, "LLM proofreading...")
+            ProgressEvent("llm", 0, 0, "LLM proofreading...")
         )
         llm_result = self._llm_client.proofread(
             original_subtitle=original_text,
@@ -109,7 +117,6 @@ class Proofreader:
             events=corrected_events,
         )
 
-        output_path = _Path(opts.output_dir, f"{video_name}.ass")
         output_path.parent.mkdir(parents=True, exist_ok=True)
         ass_content = format_ass(corrected_doc)
         output_path.write_text(ass_content, encoding="utf-8")

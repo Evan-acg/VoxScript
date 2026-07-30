@@ -47,6 +47,7 @@ class AudioExtractor(Protocol):
         output_path: str,
         *,
         stream_index: int | None = None,
+        force: bool = False,
         on_progress: ProgressCallback = null_callback,
     ) -> MediaInfo: ...
 
@@ -82,6 +83,7 @@ class Options:
     output_dir: str = "./output"
     keep_audio: bool = False
     track_index: int | None = None
+    force: bool = False
 
 
 class VoxScriptPipeline:
@@ -129,6 +131,7 @@ class VoxScriptPipeline:
                 audio_info = self._audio_extractor.extract(
                     str(input_path), str(output_wav),
                     stream_index=opts.track_index,
+                    force=opts.force,
                     on_progress=on_progress,
                 )
 
@@ -151,6 +154,13 @@ class VoxScriptPipeline:
         subtitle_path = Path(
             opts.output_dir, f"{video_name}.{self._formatter.extension}"
         )
+
+        if not opts.force and subtitle_path.exists():
+            on_progress(
+                ProgressEvent("voxscript", 1, 1, f"Using cached subtitle {subtitle_path}")
+            )
+            return str(subtitle_path)
+
         subtitle_path.parent.mkdir(parents=True, exist_ok=True)
         content = self._formatter.format(result.segments)
         subtitle_path.write_text(content, encoding="utf-8")

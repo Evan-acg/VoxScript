@@ -63,3 +63,11 @@ keep_audio_option = click.option(
     default=False,
     help="Keep the extracted audio WAV file",
 )
+
+force_option = click.option(
+    "-f",
+    "--force",
+    is_flag=True,
+    default=False,
+    help="Force re-extract audio and re-generate subtitle",
+)
