@@ -169,6 +169,7 @@ venv.bak/
 
 # mypy
 .mypy_cache/
+.vox_cache/
 .dmypy.json
 dmypy.json
 

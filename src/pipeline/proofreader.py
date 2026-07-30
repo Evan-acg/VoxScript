@@ -85,7 +85,7 @@ class Proofreader:
         else:
             import json as _json
 
-            cache_dir = _Path(opts.output_dir) / ".voxcache"
+            cache_dir = _Path.cwd() / ".vox_cache"
             cache_dir.mkdir(parents=True, exist_ok=True)
             cache_db_path = cache_dir / "cache.json"
 
