@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import tempfile
 from pathlib import Path
 
 from ..config import get
@@ -24,6 +23,26 @@ class Proofreader:
         self._transcriber = transcriber
         self._llm_client = llm_client
 
+    @staticmethod
+    def _hash_file(path: str) -> str:
+        import hashlib
+        import os
+        size = os.path.getsize(path)
+        h = hashlib.md5()
+        h.update(f"size:{size}".encode())
+        with open(path, "rb") as f:
+            chunk_size = 65536
+            if size <= chunk_size * 4:
+                h.update(f.read())
+            else:
+                h.update(f.read(chunk_size))
+                mid = size // 2
+                f.seek(mid - chunk_size // 2)
+                h.update(f.read(chunk_size))
+                f.seek(size - chunk_size)
+                h.update(f.read(chunk_size))
+        return h.hexdigest()
+
     def run(
         self,
         video_path: str,
@@ -35,12 +54,6 @@ class Proofreader:
 
         video_name = _Path(video_path).stem
         output_path = _Path(opts.output_dir, f"{video_name}.ass")
-
-        if not opts.force and output_path.exists():
-            on_progress(
-                ProgressEvent("proofread", 4, 4, f"Using cached subtitle {output_path}")
-            )
-            return str(output_path)
 
         on_progress(
             ProgressEvent("proofread", 0, 4, "Parsing input subtitle...")
@@ -70,43 +83,93 @@ class Proofreader:
                 ProgressEvent("proofread", 2, 4, f"Loaded {len(ref_doc.events)} reference segments")
             )
         else:
-            if is_audio_only(video_path):
-                audio_path = video_path
+            import json as _json
+
+            cache_dir = _Path(opts.output_dir) / ".voxcache"
+            cache_dir.mkdir(parents=True, exist_ok=True)
+            cache_db_path = cache_dir / "cache.json"
+
+            cache_db: dict = {}
+            if cache_db_path.exists():
+                cache_db = _json.loads(cache_db_path.read_text(encoding="utf-8"))
+
+            abs_input = str(_Path(video_path).resolve())
+            input_hash = self._hash_file(video_path)
+            input_type = "audio" if is_audio_only(video_path) else "video"
+            entry = cache_db.get(abs_input, {})
+            cache_valid = (
+                not opts.force
+                and entry.get("hash") == input_hash
+                and entry.get("type") == input_type
+            )
+
+            # --- Audio ---
+            audio_path: str | None = None
+            if cache_valid and entry.get("audio") and _Path(entry["audio"]).exists():
+                audio_path = entry["audio"]
                 on_progress(
-                    ProgressEvent("proofread", 1, 4, "Audio-only file, skipping extraction")
+                    ProgressEvent("proofread", 1, 4, "Audio cache hit")
                 )
-            else:
-                tmpdir = tempfile.mkdtemp(prefix=get("logging", "temp_prefix", fallback="voxscript_"))
-                output_wav = _Path(tmpdir, f"{video_name}.wav")
-                self._audio_extractor.extract(
-                    video_path,
-                    str(output_wav),
-                    stream_index=opts.track_index,
-                    force=opts.force,
+
+            if audio_path is None:
+                if is_audio_only(video_path):
+                    audio_path = video_path
+                    on_progress(
+                        ProgressEvent("proofread", 1, 4, "Audio-only file, skipping extraction")
+                    )
+                else:
+                    output_wav = str(cache_dir / f"{input_hash}.wav")
+                    self._audio_extractor.extract(
+                        video_path,
+                        output_wav,
+                        stream_index=opts.track_index,
+                        force=opts.force,
+                        on_progress=on_progress,
+                    )
+                    audio_path = output_wav
+
+            # --- Transcription ---
+            ref_transcript: str | None = None
+            whisper_path: str = ""
+            if cache_valid and entry.get("whisper") and _Path(entry["whisper"]).exists():
+                ref_transcript = _Path(entry["whisper"]).read_text(encoding="utf-8")
+                whisper_path = entry["whisper"]
+                on_progress(
+                    ProgressEvent("proofread", 2, 4, "Transcription cache hit")
+                )
+
+            if ref_transcript is None:
+                on_progress(
+                    ProgressEvent("proofread", 2, 4, "Transcribing audio...")
+                )
+                result = self._transcriber.transcribe(
+                    audio_path,
+                    model_name=opts.model_name,
+                    language=opts.language,
+                    device=opts.device,
                     on_progress=on_progress,
                 )
-                audio_path = str(output_wav)
+
+                formatter = SrtFormatter()
+                ref_transcript = formatter.format(result.segments)
+
+                whisper_path = str(cache_dir / f"{input_hash}.whisper.srt")
+                _Path(whisper_path).write_text(ref_transcript, encoding="utf-8")
+
+            # --- Update cache ---
+            if entry.get("hash") != input_hash or entry.get("audio") != audio_path or entry.get("whisper") != whisper_path:
+                cache_db[abs_input] = {
+                    "hash": input_hash,
+                    "type": input_type,
+                    "audio": audio_path,
+                    "whisper": whisper_path,
+                }
+                cache_db_path.write_text(
+                    _json.dumps(cache_db, ensure_ascii=False, indent=2), encoding="utf-8"
+                )
 
             on_progress(
-                ProgressEvent("proofread", 2, 4, "Transcribing audio...")
-            )
-            result = self._transcriber.transcribe(
-                audio_path,
-                model_name=opts.model_name,
-                language=opts.language,
-                device=opts.device,
-                on_progress=on_progress,
-            )
-
-            formatter = SrtFormatter()
-            ref_transcript = formatter.format(result.segments)
-
-            ref_path = _Path(opts.output_dir, f"{video_name}.whisper.srt")
-            if opts.force or not ref_path.exists():
-                ref_path.parent.mkdir(parents=True, exist_ok=True)
-                ref_path.write_text(ref_transcript, encoding="utf-8")
-            on_progress(
-                ProgressEvent("proofread", 2, 4, f"Reference saved to {ref_path.name}")
+                ProgressEvent("proofread", 2, 4, "Reference loaded")
             )
 
         on_progress(
