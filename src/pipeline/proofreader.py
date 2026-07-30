@@ -24,12 +24,12 @@ class Proofreader:
         self._llm_client = llm_client
 
     @staticmethod
-    def _hash_file(path: str) -> str:
+    def _hash_file(path: str, *, start: float | None = None, end: float | None = None) -> str:
         import hashlib
         import os
         size = os.path.getsize(path)
         h = hashlib.md5()
-        h.update(f"size:{size}".encode())
+        h.update(f"size:{size}|start:{start}|end:{end}".encode())
         with open(path, "rb") as f:
             chunk_size = 65536
             if size <= chunk_size * 4:
@@ -93,14 +93,11 @@ class Proofreader:
             if cache_db_path.exists():
                 cache_db = _json.loads(cache_db_path.read_text(encoding="utf-8"))
 
-            abs_input = str(_Path(video_path).resolve())
-            input_hash = self._hash_file(video_path)
+            input_hash = self._hash_file(video_path, start=opts.start, end=opts.end)
             input_type = "audio" if is_audio_only(video_path) else "video"
-            entry = cache_db.get(abs_input, {})
+            entry = cache_db.get(input_hash, {})
             cache_valid = (
-                not opts.force
-                and entry.get("hash") == input_hash
-                and entry.get("type") == input_type
+                not opts.force and bool(entry)
             )
 
             # --- Audio ---
@@ -159,10 +156,23 @@ class Proofreader:
                 _Path(whisper_path).write_text(ref_transcript, encoding="utf-8")
 
             # --- Update cache ---
-            if entry.get("hash") != input_hash or entry.get("audio") != audio_path or entry.get("whisper") != whisper_path:
-                cache_db[abs_input] = {
+            cached_entry = cache_db.get(input_hash, {})
+            cached_path = str(_Path(video_path).resolve())
+            if (
+                cached_entry.get("path") != cached_path
+                or cached_entry.get("audio") != audio_path
+                or cached_entry.get("whisper") != whisper_path
+                or cached_entry.get("start") != opts.start
+                or cached_entry.get("end") != opts.end
+            ):
+                cache_db[input_hash] = {
                     "hash": input_hash,
+                    "path": str(_Path(video_path).resolve()),
                     "type": input_type,
+                    "start": opts.start,
+                    "end": opts.end,
+                    "og_start": opts.og_start,
+                    "og_end": opts.og_end,
                     "audio": audio_path,
                     "whisper": whisper_path,
                 }

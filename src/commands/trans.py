@@ -88,6 +88,8 @@ def trans(
         force=force,
         start=parse_hms(start) if start else None,
         end=parse_hms(end) if end else None,
+        og_start=start,
+        og_end=end,
     )
 
     pipeline = VoxScriptPipeline(

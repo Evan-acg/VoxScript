@@ -88,6 +88,8 @@ class Options:
     force: bool = False
     start: float | None = None
     end: float | None = None
+    og_start: str | None = None
+    og_end: str | None = None
 
 
 class VoxScriptPipeline:
