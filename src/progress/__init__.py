@@ -1,9 +1,14 @@
 from __future__ import annotations
 
+import logging
+import sys
 from collections.abc import Callable
 from dataclasses import dataclass
 
 from rich.console import Console
+from rich.layout import Layout
+from rich.live import Live
+from rich.panel import Panel
 from rich.progress import (
     BarColumn,
     Progress,
@@ -34,6 +39,7 @@ class RichProgressReporter:
     def __init__(self) -> None:
         cs = get("progress", "color_system", fallback="truecolor")
         self._console = Console(color_system=cs)
+
         self._progress = Progress(
             TextColumn("[progress.description]{task.description}"),
             BarColumn(),
@@ -43,25 +49,93 @@ class RichProgressReporter:
         )
         self._tasks: dict[str, TaskID] = {}
 
+        self._log_lines: list[str] = []
+
+        self._layout = Layout()
+        self._layout.split_column(
+            Layout(
+                Panel("", title="\u65e5\u5fd7", border_style="dim"),
+                name="log",
+                ratio=3,
+            ),
+            Layout(
+                Panel(self._progress, title="\u8fdb\u5ea6", border_style="dim"),
+                name="progress",
+                ratio=1,
+                minimum_size=3,
+            ),
+        )
+
+        self._live: Live | None = None
+        self._loguru_handler_id: int | None = None
+
+    def _append_log(self, message: str) -> None:
+        self._log_lines.append(message)
+        if len(self._log_lines) > 200:
+            self._log_lines = self._log_lines[-200:]
+        self._layout["log"].update(
+            Panel("\n".join(self._log_lines), title="\u65e5\u5fd7", border_style="dim")
+        )
+
     def __enter__(self) -> RichProgressReporter:
-        self._progress.__enter__()
+        from loguru import logger
+
+        logger.remove()
+
+        self._loguru_handler_id = logger.add(
+            self._append_log,
+            level="INFO",
+            format="{time:HH:mm:ss} | {level:<7} | {message}",
+        )
+
+        for name in [
+            "whisperx", "pyannote", "lightning", "lightning.pytorch",
+            "huggingface_hub", "transformers", "httpcore", "httpx",
+            "openai", "filelock", "torch", "whisper",
+            "whisperx.asr", "whisperx.vads",
+        ]:
+            logging.getLogger(name).handlers.clear()
+            logging.getLogger(name).propagate = True
+
+        self._live = Live(
+            self._layout,
+            console=self._console,
+            refresh_per_second=4,
+        )
+        self._live.__enter__()
         return self
 
     def __exit__(self, *args: object) -> None:
-        self._progress.__exit__(*args)
+        from loguru import logger
+
+        if self._live is not None:
+            self._live.__exit__(*args)
+            self._live = None
+
+        if self._loguru_handler_id is not None:
+            logger.remove(self._loguru_handler_id)
+            self._loguru_handler_id = None
+
+        logger.add(
+            sys.stderr,
+            level="INFO",
+            format="<green>{time:HH:mm:ss}</green> | <level>{level:<7}</level> | {message}",
+        )
 
     def as_callback(self) -> ProgressCallback:
         def callback(event: ProgressEvent) -> None:
             if event.stage not in self._tasks:
-                total: float | None = event.total if event.total > 0 else None
                 self._tasks[event.stage] = self._progress.add_task(
-                    event.stage, total=total
+                    event.stage, total=None
                 )
             task_id = self._tasks[event.stage]
+            total: float | None = event.total if event.total > 0 else None
+            desc = event.message or event.stage
             self._progress.update(
                 task_id,
-                completed=event.completed,
-                description=event.message or event.stage,
+                total=total,
+                completed=event.completed if total is not None else 0,
+                description=desc,
             )
 
         return callback
