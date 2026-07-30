@@ -54,36 +54,52 @@ class Proofreader:
             ProgressEvent("proofread", 1, 4, f"Parsed {len(doc.events)} subtitle events")
         )
 
-        if is_audio_only(video_path):
-            audio_path = video_path
+        _SUBTITLE_EXTS = {".srt", ".ssa", ".ass"}
+        input_ext = _Path(video_path).suffix.lower()
+
+        if input_ext in _SUBTITLE_EXTS:
             on_progress(
-                ProgressEvent("proofread", 1, 4, "Audio-only file, skipping extraction")
+                ProgressEvent("proofread", 1, 4, "Loading reference subtitle...")
+            )
+            ref_doc = parse_subtitle(video_path)
+            ref_transcript = "\n".join(
+                f"{e.index}\n{_format_srt_time(e.start)} --> {_format_srt_time(e.end)}\n{e.text}"
+                for e in ref_doc.events
+            )
+            on_progress(
+                ProgressEvent("proofread", 2, 4, f"Loaded {len(ref_doc.events)} reference segments")
             )
         else:
-            tmpdir = tempfile.mkdtemp(prefix=get("logging", "temp_prefix", fallback="voxscript_"))
-            output_wav = _Path(tmpdir, f"{video_name}.wav")
-            self._audio_extractor.extract(
-                video_path,
-                str(output_wav),
-                stream_index=opts.track_index,
-                force=opts.force,
+            if is_audio_only(video_path):
+                audio_path = video_path
+                on_progress(
+                    ProgressEvent("proofread", 1, 4, "Audio-only file, skipping extraction")
+                )
+            else:
+                tmpdir = tempfile.mkdtemp(prefix=get("logging", "temp_prefix", fallback="voxscript_"))
+                output_wav = _Path(tmpdir, f"{video_name}.wav")
+                self._audio_extractor.extract(
+                    video_path,
+                    str(output_wav),
+                    stream_index=opts.track_index,
+                    force=opts.force,
+                    on_progress=on_progress,
+                )
+                audio_path = str(output_wav)
+
+            on_progress(
+                ProgressEvent("proofread", 2, 4, "Transcribing audio...")
+            )
+            result = self._transcriber.transcribe(
+                audio_path,
+                model_name=opts.model_name,
+                language=opts.language,
+                device=opts.device,
                 on_progress=on_progress,
             )
-            audio_path = str(output_wav)
 
-        on_progress(
-            ProgressEvent("proofread", 2, 4, "Transcribing audio...")
-        )
-        result = self._transcriber.transcribe(
-            audio_path,
-            model_name=opts.model_name,
-            language=opts.language,
-            device=opts.device,
-            on_progress=on_progress,
-        )
-
-        formatter = SrtFormatter()
-        ref_transcript = formatter.format(result.segments)
+            formatter = SrtFormatter()
+            ref_transcript = formatter.format(result.segments)
 
         on_progress(
             ProgressEvent("llm", 0, 0, "LLM proofreading...")

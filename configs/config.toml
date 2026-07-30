@@ -1,6 +1,6 @@
 [defaults]
 output_dir = "./output"
-model_name = "base"
+model_name = "medium"
 device = "cuda"
 language = ""
 
