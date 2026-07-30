@@ -16,8 +16,24 @@ from rich.progress import (
     TextColumn,
     TimeElapsedColumn,
 )
+from rich.table import Column
 
 from ..config import get
+
+
+_STAGE_LABELS: dict[str, str] = {
+    "proofread": "校对",
+    "whisperx_load": "加载模型",
+    "whisperx": "转写中",
+    "whisperx_align": "对齐中",
+    "whisperx_align_load": "加载对齐模型",
+    "ffmpeg": "提取音频",
+    "ffprobe": "视频信息",
+    "cache": "使用缓存",
+    "llm": "LLM校对",
+    "voxscript": "输出字幕",
+    "audio_check": "检查音频",
+}
 
 
 @dataclass(frozen=True)
@@ -41,10 +57,13 @@ class RichProgressReporter:
         self._console = Console(color_system=cs)
 
         self._progress = Progress(
-            TextColumn("[progress.description]{task.description}"),
-            BarColumn(),
-            TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
-            TimeElapsedColumn(),
+            TextColumn("[progress.description]{task.description}",
+                       table_column=Column(ratio=1, no_wrap=True)),
+            BarColumn(table_column=Column(ratio=4)),
+            TextColumn("[progress.percentage]{task.percentage:>3.0f}%",
+                       table_column=Column(ratio=1)),
+            TimeElapsedColumn(table_column=Column(ratio=1)),
+            expand=True,
             console=self._console,
         )
         self._tasks: dict[str, TaskID] = {}
@@ -130,7 +149,7 @@ class RichProgressReporter:
                 )
             task_id = self._tasks[event.stage]
             total: float | None = event.total if event.total > 0 else None
-            desc = event.message or event.stage
+            desc = _STAGE_LABELS.get(event.stage) or event.message or event.stage
             self._progress.update(
                 task_id,
                 total=total,

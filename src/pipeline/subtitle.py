@@ -61,7 +61,7 @@ class WhisperXTranscriber:
         )
 
         bridge = _WhisperProgressBridge(
-            on_progress, "whisperx", audio_dur, model_name, device,
+            on_progress, "whisperx",
         )
 
         heartbeat = bridge.start_heartbeat()
@@ -110,7 +110,7 @@ class WhisperXTranscriber:
 
         if model_a is not None:
             align_bridge = _WhisperProgressBridge(
-                on_progress, "whisperx_align", audio_dur, model_name, device,
+                on_progress, "whisperx_align",
             )
             align_hb = align_bridge.start_heartbeat()
             try:
@@ -194,18 +194,10 @@ class _WhisperProgressBridge:
         self,
         on_progress: ProgressCallback,
         stage: str,
-        audio_dur: float,
-        model_name: str,
-        device: str,
     ) -> None:
         self._on_progress = on_progress
         self._stage = stage
         self._actual = 0.0
-        self._start = time.time()
-        factors = _load_speed_factors()
-        factor = factors.get((model_name, device), 1)
-        min_est = get_int("whisper", "min_estimate_seconds", fallback=10)
-        self._estimate = max(audio_dur / factor, min_est)
         self._stop = threading.Event()
 
     def whisperx_callback(self) -> Callable[[float], None]:
@@ -216,14 +208,11 @@ class _WhisperProgressBridge:
 
     def start_heartbeat(self) -> threading.Thread:
         interval = get_float("progress", "heartbeat_interval", fallback=0.5)
-        max_frac = get_float("progress", "max_fraction", fallback=0.95)
 
         def _heartbeat() -> None:
             while not self._stop.wait(interval):
-                elapsed = time.time() - self._start
-                fraction = max(self._actual, min(elapsed / self._estimate, max_frac))
                 self._on_progress(
-                    ProgressEvent(self._stage, fraction, 1.0, "Transcribing...")
+                    ProgressEvent(self._stage, self._actual, 1.0, "")
                 )
 
         t = threading.Thread(target=_heartbeat, daemon=True)
