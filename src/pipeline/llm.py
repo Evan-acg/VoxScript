@@ -74,6 +74,8 @@ class LLMClient:
             ProgressEvent("llm", 0, 1, "Sending to LLM for proofreading...")
         )
 
+        print("\n─── LLM Proofreading ───", flush=True)
+
         response = self._client.chat.completions.create(
             model=self._model,
             messages=[
@@ -86,22 +88,34 @@ class LLMClient:
                 },
             ],
             temperature=get_float("llm", "temperature", fallback=0.0),
-            max_tokens=get_int("llm", "max_tokens", fallback=4096),
+            max_tokens=get_int("llm", "max_tokens", fallback=32768),
+            stream=True,
         )
 
+        collected: list[str] = []
+        finish_reason = None
+        for chunk in response:
+            if chunk.choices:
+                delta = chunk.choices[0].delta
+                if delta and delta.content:
+                    collected.append(delta.content)
+                    print(delta.content, end="", flush=True)
+                if chunk.choices[0].finish_reason:
+                    finish_reason = chunk.choices[0].finish_reason
+            if hasattr(chunk, "usage") and chunk.usage:
+                usage = chunk.usage
+
+        print(flush=True)
         on_progress(
             ProgressEvent("llm", 1, 1, "LLM proofreading complete")
         )
 
-        content = response.choices[0].message.content
+        content = "".join(collected).strip()
         if not content:
-            reason = response.choices[0].finish_reason
-            usage_dict = dict(response.usage or {})
             raise ProofreadError(
                 f"LLM returned empty content\n"
-                f"  model={response.model}\n"
-                f"  finish_reason={reason}\n"
-                f"  usage={usage_dict}"
+                f"  finish_reason={finish_reason}\n"
+                f"  usage={dict(usage) if 'usage' in dir() else {}}"
             )
 
         try:
