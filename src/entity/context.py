@@ -7,3 +7,4 @@ from pydantic import BaseModel
 
 class PipelineContext(BaseModel):
     audio_path: Path | None = None
+    audio_track: int | None = None
