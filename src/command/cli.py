@@ -3,17 +3,9 @@ from __future__ import annotations
 from pathlib import Path
 
 import click
+from pydantic import ValidationError
 
-_ALLOWED_FORMATS = ("srt", "ass", "ssa")
-
-
-def validate_subtitle_path(value: str) -> None:
-    suffix = value.rsplit(".", 1)[-1] if "." in value else ""
-    if suffix not in _ALLOWED_FORMATS:
-        raise click.ClickException(
-            f"unsupported subtitle format: {suffix or '<none>'}; "
-            f"expected one of: {', '.join(_ALLOWED_FORMATS)}"
-        )
+from src.entity.proof import ProofArgs
 
 
 @click.command()
@@ -21,7 +13,7 @@ def validate_subtitle_path(value: str) -> None:
     "-i",
     "--input",
     "input_path",
-    type=click.Path(exists=True, dir_okay=False, path_type=Path),
+    type=click.Path(dir_okay=False, path_type=Path),
     required=True,
     help="Input video or audio file.",
 )
@@ -31,7 +23,7 @@ def validate_subtitle_path(value: str) -> None:
     "subtitle_paths",
     multiple=True,
     required=True,
-    help="Subtitle file path, repeatable; braces like {srt, ass, ssa} list allowed formats.",
+    help="Subtitle file path, repeatable.",
 )
 @click.option(
     "-o",
@@ -41,17 +33,25 @@ def validate_subtitle_path(value: str) -> None:
     default=None,
     help="Output ASS file; defaults to <input>.ass.",
 )
-def cli(input_path: Path, subtitle_paths: tuple[str, ...], output_path: Path | None) -> None:
-    """VoxScript placeholder CLI."""
-    for value in subtitle_paths:
-        validate_subtitle_path(value)
+def cli(
+    input_path: Path,
+    subtitle_paths: tuple[str, ...],
+    output_path: Path | None,
+) -> None:
+    """VoxScript CLI."""
+    try:
+        args = ProofArgs(
+            input_path=input_path,
+            subtitle_paths=list(subtitle_paths),
+            output_path=output_path,
+        )
+    except ValidationError as exc:
+        raise click.ClickException(exc.errors()[0]["msg"]) from exc
 
-    output = output_path or input_path.with_suffix(".ass")
-
-    click.echo(f"Input video: {input_path}")
-    for value in subtitle_paths:
+    click.echo(f"Input video: {args.input_path}")
+    for value in args.subtitle_paths:
         click.echo(f"Subtitle: {value}")
-    click.echo(f"Output subtitle: {output}")
+    click.echo(f"Output subtitle: {args.output_path}")
 
 
 if __name__ == "__main__":
