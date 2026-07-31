@@ -13,6 +13,7 @@ from src.core.events import EventBus
 from src.core.preflight import run_preflight_if_needed
 from src.entity.context import PipelineContext
 from src.entity.proof import ProofArgs
+from src.handler.asr import AsrHandler
 from src.handler.audio import AudioHandler
 from src.ui.dashboard import Dashboard
 
@@ -50,11 +51,20 @@ console = Console()
     default=False,
     help="Force re-running the preflight checks.",
 )
+@click.option(
+    "-l",
+    "--language",
+    "language",
+    type=str,
+    default=None,
+    help="Transcription language (e.g. zh); defaults to auto-detect.",
+)
 def cli(
     input_path: Path,
     subtitle_paths: tuple[str, ...],
     output_path: Path | None,
     force_check: bool,
+    language: str | None,
 ) -> None:
     """VoxScript CLI."""
     config = AppConfig.load()
@@ -72,7 +82,7 @@ def cli(
     dashboard = Dashboard(bus, console=console)
     dashboard.start()
     try:
-        context = _run_pipeline(bus, dashboard, args, config, force_check)
+        context = _run_pipeline(bus, dashboard, args, config, force_check, language)
     except click.ClickException:
         dashboard.stop()
         dashboard.print_snapshot()
@@ -92,6 +102,9 @@ def cli(
             "\n",
             ("Audio track: ", "bold"),
             (str(context.audio_track), "cyan"),
+            "\n",
+            ("Transcript: ", "bold"),
+            (str(context.transcript_path), "cyan"),
         ),
         title="Done",
         border_style="green",
@@ -105,6 +118,7 @@ def _run_pipeline(
     args: ProofArgs,
     config: AppConfig,
     force_check: bool,
+    language: str | None,
 ) -> PipelineContext:
     bus.step_started("preflight")
     results = run_preflight_if_needed(config, force=force_check)
@@ -135,6 +149,20 @@ def _run_pipeline(
         bus.step_failed("extract_audio", str(exc))
         raise click.ClickException(str(exc)) from exc
     bus.step_completed("extract_audio")
+
+    bus.step_started("transcribe")
+    try:
+        context = AsrHandler(
+            args,
+            context,
+            bus,
+            model_dir=config.model_dir,
+            language=language,
+        ).transcribe()
+    except RuntimeError as exc:
+        bus.step_failed("transcribe", str(exc))
+        raise click.ClickException(str(exc)) from exc
+    bus.step_completed("transcribe")
     return context
 
 
