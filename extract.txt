@@ -1,0 +1,1 @@
+uv run whisperx "yourvideo.mp4" --model medium --compute_type int8 --batch_size 16 --output_format  srt --language en
