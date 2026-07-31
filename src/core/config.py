@@ -5,7 +5,7 @@ from pathlib import Path
 import yaml
 from pydantic import BaseModel
 
-_PROJECT_ROOT = Path(__file__).resolve().parent.parent
+_PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 DEFAULT_CONFIG_PATH = _PROJECT_ROOT / "configs" / "config.yaml"
 
 

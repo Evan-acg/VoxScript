@@ -5,7 +5,7 @@ from pathlib import Path
 import click
 from pydantic import ValidationError
 
-from src.config import AppConfig
+from src.core.config import AppConfig
 from src.entity.proof import ProofArgs
 
 
