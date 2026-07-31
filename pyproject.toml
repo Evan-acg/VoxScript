@@ -8,4 +8,5 @@ dependencies = [
     "rich>=15.0.0",
     "torch==2.8.0",
     "torchaudio==2.8.0",
+    "whisperx==3.7.6",
 ]
