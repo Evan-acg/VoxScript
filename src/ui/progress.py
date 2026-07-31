@@ -87,6 +87,9 @@ class ProgressView(PanelView):
             self._current = event.step
         elif event.type is EventType.STEP_COMPLETED:
             self._progress[event.step] = 100.0
+            self._current = None
+        elif event.type is EventType.STEP_FAILED:
+            self._current = None
         elif event.type is EventType.PROGRESS:
             self._progress[event.step] = event.progress
 
