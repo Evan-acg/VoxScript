@@ -5,7 +5,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
 
-from command.cli import cli
+from src.command.cli import cli
 
 
 if __name__ == "__main__":
