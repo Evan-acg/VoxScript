@@ -3,6 +3,8 @@ name = "voxscript"
 version = "0.1.0"
 requires-python = ">=3.12"
 dependencies = [
+    "click>=8.4.2",
+    "rich>=15.0.0",
     "torch==2.8.0",
     "torchaudio==2.8.0",
 ]
