@@ -2,41 +2,20 @@ from __future__ import annotations
 
 import tempfile
 import threading
+import time
 from collections.abc import Callable
 from pathlib import Path
 
 import whisperx
 from loguru import logger
 
-from ..config import get, get_bool, get_float, get_int
+from ..config import get, get_bool, get_float, get_int, get_section
 from ..progress import ProgressCallback, ProgressEvent, null_callback
 from . import Formatter, Segment, Transcriber, TranscriptionResult
 
 
 class TranscriptionError(Exception):
     pass
-
-
-def detect_language(audio_path: str, device: str) -> str:
-    from ..config import get, get_bool
-
-    import whisperx
-
-    audio = whisperx.load_audio(audio_path)
-    model = whisperx.load_model(
-        "tiny",
-        device=device,
-        compute_type=get(
-            "whisper",
-            f"compute_type_{device}",
-            fallback="float16" if device == "cuda" else "float32",
-        ),
-        language=None,
-        local_files_only=get_bool("whisper", "local_files_only", fallback=False),
-    )
-    raw = model.transcribe(audio, batch_size=8)
-    lang: str = raw.get("language", "en")
-    return lang
 
 
 class WhisperXTranscriber:
@@ -55,7 +34,7 @@ class WhisperXTranscriber:
         sample_rate = get_int("audio", "sample_rate", fallback=16000)
         audio_dur = audio.shape[-1] / sample_rate
         logger.info(
-            "Audio loaded: {} samples @ {}Hz = {:.1f}s",
+            "Audio loaded: %d samples @ %dHz = %.1fs",
             audio.shape[-1], sample_rate, audio_dur,
         )
 
@@ -82,7 +61,7 @@ class WhisperXTranscriber:
         )
 
         bridge = _WhisperProgressBridge(
-            on_progress, "whisperx", total=audio_dur,
+            on_progress, "whisperx",
         )
 
         heartbeat = bridge.start_heartbeat()
@@ -102,10 +81,10 @@ class WhisperXTranscriber:
         detected_lang = raw.get("language", language or get("whisper", "fallback_language", fallback="en"))
         raw_segments = raw.get("segments", [])
         logger.info(
-            "Transcribed: {} segments, lang={}", len(raw_segments), detected_lang,
+            "Transcribed: %d segments, lang=%s", len(raw_segments), detected_lang,
         )
         on_progress(
-            ProgressEvent("whisperx", audio_dur, audio_dur, "Transcription done")
+            ProgressEvent("whisperx", 1, 1, "Transcription done")
         )
 
         on_progress(
@@ -145,7 +124,7 @@ class WhisperXTranscriber:
                 )
                 segments_raw = aligned["segments"]
                 logger.info(
-                    "Aligned: {} segments", len(segments_raw)
+                    "Aligned: %d segments", len(segments_raw)
                 )
             except Exception as e:
                 raise TranscriptionError(
@@ -197,16 +176,27 @@ def _format_time(seconds: float) -> str:
     return f"{h:02d}:{m:02d}:{s:06.3f}".replace(".", ",")
 
 
+def _load_speed_factors() -> dict[tuple[str, str], float]:
+    section = get_section("whisper", "speed_factors")
+    result: dict[tuple[str, str], float] = {}
+    for key, val in section.items():
+        parts = key.split(",")
+        if len(parts) == 2:
+            try:
+                result[(parts[0].strip(), parts[1].strip())] = float(val)
+            except (ValueError, TypeError):
+                pass
+    return result
+
+
 class _WhisperProgressBridge:
     def __init__(
         self,
         on_progress: ProgressCallback,
         stage: str,
-        total: float = 1.0,
     ) -> None:
         self._on_progress = on_progress
         self._stage = stage
-        self._total = total
         self._actual = 0.0
         self._stop = threading.Event()
 
@@ -222,7 +212,7 @@ class _WhisperProgressBridge:
         def _heartbeat() -> None:
             while not self._stop.wait(interval):
                 self._on_progress(
-                    ProgressEvent(self._stage, self._actual * self._total, self._total, "")
+                    ProgressEvent(self._stage, self._actual, 1.0, "")
                 )
 
         t = threading.Thread(target=_heartbeat, daemon=True)

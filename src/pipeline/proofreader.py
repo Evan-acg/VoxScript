@@ -1,8 +1,5 @@
 from __future__ import annotations
 
-import hashlib
-import json
-import os
 from pathlib import Path
 
 from ..config import get
@@ -11,34 +8,8 @@ from . import AudioExtractor, Options, Segment, resolve_output_path
 from .ass_formatter import format_ass
 from .audio import is_audio_only
 from .llm import LLMClient, ProofreadError
-from .proof_report import (
-    ProofReport,
-    ReportSummary,
-    format_json_report,
-    format_terminal_summary,
-)
 from .subtitle import SrtFormatter, Transcriber
-from .subtitle_parser import SubtitleEvent, _format_srt_time, _parse_srt_time, parse_subtitle
-
-_SUBTITLE_EXTS = {".srt", ".ssa", ".ass"}
-
-
-def _hash_file(path: str, *, start: float | None = None, end: float | None = None) -> str:
-    size = os.path.getsize(path)
-    h = hashlib.md5()
-    h.update(f"size:{size}|start:{start}|end:{end}".encode())
-    with open(path, "rb") as f:
-        chunk_size = 65536
-        if size <= chunk_size * 4:
-            h.update(f.read())
-        else:
-            h.update(f.read(chunk_size))
-            mid = size // 2
-            f.seek(mid - chunk_size // 2)
-            h.update(f.read(chunk_size))
-            f.seek(size - chunk_size)
-            h.update(f.read(chunk_size))
-    return h.hexdigest()
+from .subtitle_parser import parse_subtitle, _format_srt_time, _parse_srt_time
 
 
 class Proofreader:
@@ -52,6 +23,26 @@ class Proofreader:
         self._transcriber = transcriber
         self._llm_client = llm_client
 
+    @staticmethod
+    def _hash_file(path: str, *, start: float | None = None, end: float | None = None) -> str:
+        import hashlib
+        import os
+        size = os.path.getsize(path)
+        h = hashlib.md5()
+        h.update(f"size:{size}|start:{start}|end:{end}".encode())
+        with open(path, "rb") as f:
+            chunk_size = 65536
+            if size <= chunk_size * 4:
+                h.update(f.read())
+            else:
+                h.update(f.read(chunk_size))
+                mid = size // 2
+                f.seek(mid - chunk_size // 2)
+                h.update(f.read(chunk_size))
+                f.seek(size - chunk_size)
+                h.update(f.read(chunk_size))
+        return h.hexdigest()
+
     def run(
         self,
         video_path: str,
@@ -59,7 +50,9 @@ class Proofreader:
         opts: Options,
         on_progress: ProgressCallback = null_callback,
     ) -> str:
-        video_name = Path(video_path).stem
+        from pathlib import Path as _Path
+
+        video_name = _Path(video_path).stem
         output_path = resolve_output_path(opts.output_dir, video_name, ".ass")
 
         on_progress(
@@ -74,7 +67,9 @@ class Proofreader:
             ProgressEvent("proofread", 1, 4, f"Parsed {len(doc.events)} subtitle events")
         )
 
-        input_ext = Path(video_path).suffix.lower()
+        _SUBTITLE_EXTS = {".srt", ".ssa", ".ass"}
+        input_ext = _Path(video_path).suffix.lower()
+
         if input_ext in _SUBTITLE_EXTS:
             on_progress(
                 ProgressEvent("proofread", 1, 4, "Loading reference subtitle...")
@@ -88,21 +83,26 @@ class Proofreader:
                 ProgressEvent("proofread", 2, 4, f"Loaded {len(ref_doc.events)} reference segments")
             )
         else:
-            cache_dir = Path.cwd() / ".vox_cache"
+            import json as _json
+
+            cache_dir = _Path.cwd() / ".vox_cache"
             cache_dir.mkdir(parents=True, exist_ok=True)
             cache_db_path = cache_dir / "cache.json"
 
             cache_db: dict = {}
             if cache_db_path.exists():
-                cache_db = json.loads(cache_db_path.read_text(encoding="utf-8"))
+                cache_db = _json.loads(cache_db_path.read_text(encoding="utf-8"))
 
-            input_hash = _hash_file(video_path, start=opts.start, end=opts.end)
+            input_hash = self._hash_file(video_path, start=opts.start, end=opts.end)
             input_type = "audio" if is_audio_only(video_path) else "video"
             entry = cache_db.get(input_hash, {})
-            cache_valid = not opts.force and bool(entry)
+            cache_valid = (
+                not opts.force and bool(entry)
+            )
 
+            # --- Audio ---
             audio_path: str | None = None
-            if cache_valid and entry.get("audio") and Path(entry["audio"]).exists():
+            if cache_valid and entry.get("audio") and _Path(entry["audio"]).exists():
                 audio_path = entry["audio"]
                 on_progress(
                     ProgressEvent("proofread", 1, 4, "Audio cache hit")
@@ -127,10 +127,11 @@ class Proofreader:
                     )
                     audio_path = output_wav
 
+            # --- Transcription ---
             ref_transcript: str | None = None
             whisper_path: str = ""
-            if cache_valid and entry.get("whisper") and Path(entry["whisper"]).exists():
-                ref_transcript = Path(entry["whisper"]).read_text(encoding="utf-8")
+            if cache_valid and entry.get("whisper") and _Path(entry["whisper"]).exists():
+                ref_transcript = _Path(entry["whisper"]).read_text(encoding="utf-8")
                 whisper_path = entry["whisper"]
                 on_progress(
                     ProgressEvent("proofread", 2, 4, "Transcription cache hit")
@@ -158,10 +159,11 @@ class Proofreader:
                 ref_transcript = formatter.format(result.segments)
 
                 whisper_path = str(cache_dir / f"{input_hash}.whisper.srt")
-                Path(whisper_path).write_text(ref_transcript, encoding="utf-8")
+                _Path(whisper_path).write_text(ref_transcript, encoding="utf-8")
 
+            # --- Update cache ---
             cached_entry = cache_db.get(input_hash, {})
-            cached_path = str(Path(video_path).resolve())
+            cached_path = str(_Path(video_path).resolve())
             if (
                 cached_entry.get("path") != cached_path
                 or cached_entry.get("audio") != audio_path
@@ -171,7 +173,7 @@ class Proofreader:
             ):
                 cache_db[input_hash] = {
                     "hash": input_hash,
-                    "path": str(Path(video_path).resolve()),
+                    "path": str(_Path(video_path).resolve()),
                     "type": input_type,
                     "start": opts.start,
                     "end": opts.end,
@@ -181,7 +183,7 @@ class Proofreader:
                     "whisper": whisper_path,
                 }
                 cache_db_path.write_text(
-                    json.dumps(cache_db, ensure_ascii=False, indent=2), encoding="utf-8"
+                    _json.dumps(cache_db, ensure_ascii=False, indent=2), encoding="utf-8"
                 )
 
             on_progress(
@@ -201,6 +203,8 @@ class Proofreader:
         corrected_segments = llm_result.get("corrected_segments", [])
         corrected_events = []
         for i, seg in enumerate(corrected_segments, start=1):
+            from .subtitle_parser import SubtitleEvent
+
             corrected_events.append(
                 SubtitleEvent(
                     index=i,
@@ -209,10 +213,6 @@ class Proofreader:
                     text=seg["text"],
                 )
             )
-
-        on_progress(
-            ProgressEvent("proofread", 3, 4, "Formatting ASS subtitle...")
-        )
 
         from .subtitle_parser import SubtitleDocument
 
@@ -230,24 +230,4 @@ class Proofreader:
             ProgressEvent("proofread", 4, 4, f"Proofread subtitle saved to {output_path}")
         )
 
-        report = ProofReport(
-            summary=ReportSummary(
-                total_lines=len(doc.events),
-                elapsed=0.0,
-            ),
-        )
-        self._save_report(report, output_path)
-        print("\n" + format_terminal_summary(report))
-
         return str(output_path)
-
-    @staticmethod
-    def _save_report(report: ProofReport, output_path: Path) -> str | None:
-        try:
-            report_path = output_path.with_suffix(".report.json")
-            report_path.write_text(
-                format_json_report(report), encoding="utf-8"
-            )
-            return str(report_path)
-        except Exception:
-            return None
