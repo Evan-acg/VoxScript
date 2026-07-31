@@ -23,6 +23,17 @@ from src.core.events import Event, EventBus, EventType
 
 PIPELINE_STEPS = ["preflight", "extract_audio", "transcribe", "generate_ass"]
 
+_BAR_HEIGHT = 5
+_LEFT_RATIO = 1
+_RIGHT_RATIO = 2
+
+
+def _log_max_lines(height: int) -> int:
+    main_height = max(1, height - _BAR_HEIGHT)
+    right_height = int(main_height * _RIGHT_RATIO / (_LEFT_RATIO + _RIGHT_RATIO))
+    return max(1, right_height - 2)
+
+
 STATUS_PENDING = "pending"
 STATUS_CURRENT = "current"
 STATUS_DONE = "done"
@@ -72,9 +83,8 @@ class Dashboard:
             self._live = None
 
     def print_snapshot(self) -> None:
-        left = self._build_log()
-        right = Group(self._build_steps(), self._build_progress_bar())
-        self._console.print(Columns([left, right], expand=True))
+        columns = Columns([self._build_steps(), self._build_log()], expand=True)
+        self._console.print(Group(columns, self._build_progress_bar()))
 
     def prompt_track(self, streams: list[dict[str, Any]]) -> int:
         self.stop()
@@ -131,22 +141,22 @@ class Dashboard:
 
     def _build(self) -> Layout:
         layout = Layout()
-        layout.split_row(
-            Layout(name="log", ratio=2, minimum_size=50),
-            Layout(name="progress", ratio=1, minimum_size=30),
+        layout.split(
+            Layout(name="main", ratio=1),
+            Layout(name="bar", size=_BAR_HEIGHT),
         )
-        layout["progress"].split_column(
-            Layout(name="steps", ratio=1),
-            Layout(name="bar", size=5),
+        layout["main"].split_row(
+            Layout(name="left", ratio=_LEFT_RATIO, minimum_size=30),
+            Layout(name="right", ratio=_RIGHT_RATIO, minimum_size=50),
         )
-        layout["log"].update(self._build_log())
-        layout["steps"].update(self._build_steps())
+        layout["left"].update(self._build_steps())
+        layout["right"].update(self._build_log())
         layout["bar"].update(self._build_progress_bar())
         return layout
 
     def _build_log(self) -> Panel:
         height = self._console.size.height
-        max_lines = max(1, height - 3)
+        max_lines = _log_max_lines(height)
         lines = list(self._log)[-max_lines:]
         content: RenderableType
         if lines:
@@ -171,12 +181,14 @@ class Dashboard:
             line.append(f"{icon} ", style=style)
             line.append(step.replace("_", " ").title(), style=style)
             lines.append(line)
-        return Panel(Group(*lines), title="Steps", border_style="cyan")
+        return Panel(Group(*lines), title="Steps", border_style="cyan", expand=True)
 
     def _build_progress_bar(self) -> Panel:
         current = self._current_step()
         if current is None:
-            return Panel(Text("Idle", style="dim"), title="Progress", border_style="green")
+            return Panel(
+                Text("Idle", style="dim"), title="Progress", border_style="green"
+            )
 
         pct = self._progress.get(current)
         mode = "bar" if pct is not None else "spinner"
