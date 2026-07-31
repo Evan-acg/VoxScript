@@ -8,7 +8,7 @@ from rich.console import Console
 from rich.table import Table
 
 from src.core.config import AppConfig
-from src.core.preflight import run_preflight
+from src.core.preflight import run_preflight_if_needed
 from src.entity.context import PipelineContext
 from src.entity.proof import ProofArgs
 from src.handler.audio import AudioHandler
@@ -41,25 +41,33 @@ console = Console()
     default=None,
     help="Output ASS file; defaults to <input>.ass.",
 )
+@click.option(
+    "--force-check",
+    is_flag=True,
+    default=False,
+    help="Force re-running the preflight checks.",
+)
 def cli(
     input_path: Path,
     subtitle_paths: tuple[str, ...],
     output_path: Path | None,
+    force_check: bool,
 ) -> None:
     """VoxScript CLI."""
     config = AppConfig.load()
-    results = run_preflight(config)
-    table = Table(title="Preflight checks")
-    table.add_column("Check")
-    table.add_column("Status")
-    table.add_column("Detail")
-    for result in results:
-        status = "[green]OK[/green]" if result.ok else "[red]FAILED[/red]"
-        table.add_row(result.name, status, result.detail)
-    console.print(table)
-    if not all(result.ok for result in results):
-        failed = [result.name for result in results if not result.ok]
-        raise click.ClickException(f"preflight checks failed: {', '.join(failed)}")
+    results = run_preflight_if_needed(config, force=force_check)
+    if results is not None:
+        table = Table(title="Preflight checks")
+        table.add_column("Check")
+        table.add_column("Status")
+        table.add_column("Detail")
+        for result in results:
+            status = "[green]OK[/green]" if result.ok else "[red]FAILED[/red]"
+            table.add_row(result.name, status, result.detail)
+        console.print(table)
+        if not all(result.ok for result in results):
+            failed = [result.name for result in results if not result.ok]
+            raise click.ClickException(f"preflight checks failed: {', '.join(failed)}")
 
     try:
         args = ProofArgs(

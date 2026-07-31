@@ -223,3 +223,6 @@ models/
 **/*.swp
 **/*.swo
 output/
+
+# Local preflight state
+.preflight.ok
