@@ -1,67 +1,108 @@
 # VoxScript
 
-Extract audio tracks from video and generate subtitles using WhisperX.
+使用 FFmpeg、WhisperX 和 LLM 自动修复 ASS 字幕的全自动工具。
 
-> **Requires** `ffmpeg` and `ffprobe` installed on the system and available in PATH.
+程序不会要求人工审核，也不会覆盖输入的 `original.ass`。不确定的项目采用保守策略保留原事件，并写入自动报告。
 
-## Installation
+## 依赖
+
+- Python `>=3.12`
+- `uv`
+- FFmpeg 和 FFprobe，并且位于 `PATH`
+- OpenAI 兼容的 LLM API
+- CUDA 环境可选，CPU 模式也可以运行
+
+安装 Python 依赖：
 
 ```bash
-git clone <repo>
-cd VoxScript
 uv sync
 ```
 
-## Usage
+设置 API key：
+
+```powershell
+$env:OPENAI_API_KEY = "your-api-key"
+```
+
+也可以使用项目原有的 `VOX_API_KEY`。
+
+## 使用
 
 ```bash
-# Basic usage (base model, CUDA, auto-detect language)
-voxscript video.mp4
-
-# Specify model and language
-voxscript video.mp4 --model small --language zh
-
-# Use CPU and keep extracted audio
-voxscript video.mp4 --device cpu --keep-audio
-
-# Custom output directory
-voxscript video.mp4 --output-dir ./subtitles
+uv run starter.py repair --video video.mkv --subtitle original.ass --output repaired.ass --chunk-minutes 10
 ```
 
-### Options
+常用选项：
 
-| Flag | Default | Description |
-|------|---------|-------------|
-| `-m, --model` | `base` | Model size: `tiny`, `base`, `small`, `medium`, `large` |
-| `-l, --language` | auto | Language code (e.g. `zh`, `en`, `ja`) |
-| `-d, --device` | `cuda` | Device: `cpu` or `cuda` |
-| `-o, --output-dir` | `.` | Output directory for subtitle file |
-| `--keep-audio` | off | Retain the intermediate 16kHz WAV file |
+| 选项 | 默认值 | 说明 |
+|------|--------|------|
+| `--video` | 必填 | 视频或音频文件 |
+| `--subtitle` | 必填 | 原始 ASS 文件 |
+| `--output` | `<video>.repaired.ass` | 最终 ASS 文件 |
+| `--chunk-minutes` | `10` | 每个主体分段的分钟数 |
+| `--context-seconds` | `10` | 分段前后上下文秒数 |
+| `--model` | `base` | WhisperX 模型 |
+| `--language` | 自动检测 | ASR 源语言 |
+| `--target-language` | `auto` | 现有字幕的目标语言 |
+| `--device` | 配置值 | `cpu` 或 `cuda` |
+| `--vad-method` | `silero` | VAD 后端，`silero` 更快 |
+| `--batch-size` | `16` | WhisperX 批量大小 |
+| `--track` | 第一个音轨 | FFmpeg 音频流索引 |
+| `--llm-model` | 配置值 | LLM 模型名 |
+| `--keep-artifacts` | 关闭 | 保留中间文件 |
+| `--work-dir` | 隐藏临时目录 | 中间文件目录 |
 
-## How It Works
+没有指定 `--track` 时自动使用第一个音频流，不进行交互式选择。
 
+## 处理流程
+
+```text
+video.mkv + original.ass
+        ↓
+固定分段和上下文
+        ↓
+FFmpeg 提取分段音频
+        ↓
+WhisperX 生成 ASR 时间证据
+        ↓
+LLM 返回字幕 ID 和 ASR ID 的修改操作
+        ↓
+程序计算时间并回写 ASS
+        ↓
+repaired.ass
 ```
-Video → [ffmpeg → 16kHz mono WAV] → [WhisperX transcribe + align] → SRT subtitle
+
+LLM 不生成时间戳。程序使用第一个 ASR 片段的开始时间和最后一个 ASR 片段的结束时间，并分别添加 `0.10` 秒和 `0.20` 秒缓冲。
+
+ASS 的原始样式、层级、名称、边距、效果和内嵌标签会被保留。程序只修改事件的开始时间、结束时间和文本。
+
+## 中间结果
+
+使用 `--keep-artifacts` 时会保留：
+
+```text
+asr.json       # ASR 片段和绝对时间
+review.json    # 自动应用、保留和错误报告
+preview.ass    # 写入最终文件前的 ASS
 ```
 
-1. **Audio Extraction**: Uses `ffprobe` for duration, then `ffmpeg` extracts PCM 16kHz mono WAV with real-time progress tracking.
-2. **Speech Recognition**: WhisperX transcribes audio with VAD-based segmentation and word-level timestamp alignment.
-3. **Subtitle Export**: Writes SRT format to disk.
+默认情况下，完全成功且没有保守降级时删除这些中间文件，只保留 `repaired.ass`。如果发生分段错误或存在 `review`/`delete` 等未自动应用项目，程序会保留报告并在命令输出中显示路径。
 
-## Dependencies
+## 自动降级规则
 
-- **Python**: `>=3.12`
-- **PyPI**: `click`, `rich`, `whisperx`
-- **System**: `ffmpeg`, `ffprobe`
+- `keep` 保留文本，只更新时间。
+- `revise` 修改文本并更新时间。
+- `insert` 自动新增明确缺失的台词。
+- `delete` 保留原字幕，不自动删除。
+- `review` 保留原字幕的原文本和时间。
+- `split`、`merge` 和标签校验失败的修改会被保留为原事件。
+- 分段或 LLM 失败时，该分段保持原字幕，其他分段继续处理。
+- 输入损坏、无法读取 ASS 或无法加载模型等致命错误会使命令失败。
 
-## Architecture
+## 测试
 
-| Module | Pattern | Responsibility |
-|--------|---------|---------------|
-| `pipeline.py` | Facade | Orchestrates the 3-stage workflow |
-| `audio.py` | — | FFmpeg audio extraction with progress |
-| `subtitle.py` | Strategy | WhisperX transcription + SRT formatting |
-| `progress.py` | Observer/Callback | Rich-based progress bar, decoupled via events |
-| `cli.py` | — | Click CLI, dependency injection assembly |
-
-All cross-module interfaces (`AudioExtractor`, `Transcriber`, `Formatter`) are defined as Protocols in `pipeline.py`, following Dependency Inversion Principle.
+```bash
+uv run pytest
+uv run starter.py --help
+uv run starter.py repair --help
+```

@@ -1,7 +1,14 @@
-## 用户原始字幕（{format} 格式）
+当前分段由程序标记为 `chunk_id={chunk_id}`。
 
-{subtitle}
+源语言：{source_language}
+目标语言：{target_language}
 
-## WhisperX 参考转录（SRT 格式）
+## 原始字幕条目 JSON
 
-{transcript}
+{subtitle_entries}
+
+## ASR 条目 JSON
+
+{asr_entries}
+
+只输出操作 JSON。

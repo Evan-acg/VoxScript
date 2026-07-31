@@ -45,11 +45,9 @@ for name in [
 
 @click.group()
 def cli() -> None:
-    """Extract subtitle from video using WhisperX."""
+    """Automatically repair ASS subtitles with ASR and an LLM."""
 
 
-from .commands.trans import trans
-from .commands.proof import proof
+from .commands.repair import repair
 
-cli.add_command(trans)
-cli.add_command(proof)
+cli.add_command(repair)

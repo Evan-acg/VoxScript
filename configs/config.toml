@@ -1,6 +1,6 @@
 [defaults]
 output_dir = "./output"
-model_name = "medium"
+model_name = "base"
 device = "cuda"
 language = ""
 
@@ -27,7 +27,8 @@ cache_dir = ""
 extensions = [".mp3", ".wav", ".flac", ".m4a", ".ogg", ".aac", ".opus", ".wma"]
 
 [whisper]
-batch_size = 8
+vad_method = "silero"
+batch_size = 16
 compute_type_cuda = "float16"
 compute_type_cpu = "float32"
 fallback_language = "en"

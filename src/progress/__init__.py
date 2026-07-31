@@ -33,6 +33,8 @@ _STAGE_LABELS: dict[str, str] = {
     "llm": "LLM校对",
     "voxscript": "输出字幕",
     "audio_check": "检查音频",
+    "repair": "自动修复",
+    "asr": "ASR转写",
 }
 
 
