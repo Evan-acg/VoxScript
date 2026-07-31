@@ -5,13 +5,16 @@ from pathlib import Path
 import click
 from pydantic import ValidationError
 from rich.console import Console
-from rich.table import Table
+from rich.panel import Panel
+from rich.text import Text
 
 from src.core.config import AppConfig
+from src.core.events import EventBus
 from src.core.preflight import run_preflight_if_needed
 from src.entity.context import PipelineContext
 from src.entity.proof import ProofArgs
 from src.handler.audio import AudioHandler
+from src.ui.dashboard import Dashboard
 
 console = Console()
 
@@ -55,20 +58,6 @@ def cli(
 ) -> None:
     """VoxScript CLI."""
     config = AppConfig.load()
-    results = run_preflight_if_needed(config, force=force_check)
-    if results is not None:
-        table = Table(title="Preflight checks")
-        table.add_column("Check")
-        table.add_column("Status")
-        table.add_column("Detail")
-        for result in results:
-            status = "[green]OK[/green]" if result.ok else "[red]FAILED[/red]"
-            table.add_row(result.name, status, result.detail)
-        console.print(table)
-        if not all(result.ok for result in results):
-            failed = [result.name for result in results if not result.ok]
-            raise click.ClickException(f"preflight checks failed: {', '.join(failed)}")
-
     try:
         args = ProofArgs(
             input_path=input_path,
@@ -79,17 +68,74 @@ def cli(
     except ValidationError as exc:
         raise click.ClickException(exc.errors()[0]["msg"]) from exc
 
-    click.echo(f"Input video: {args.input_path}")
-    for value in args.subtitle_paths:
-        click.echo(f"Subtitle: {value}")
-    click.echo(f"Output subtitle: {args.output_path}")
-    click.echo(f"Model dir: {args.model_dir}")
-
+    bus = EventBus()
+    dashboard = Dashboard(bus, console=console)
+    dashboard.start()
     try:
-        context = AudioHandler(args, PipelineContext()).extract_audio()
+        context = _run_pipeline(bus, dashboard, args, config, force_check)
+    except click.ClickException:
+        dashboard.stop()
+        dashboard.print_snapshot()
+        raise
+    finally:
+        dashboard.stop()
+
+    dashboard.print_snapshot()
+
+    summary = Panel(
+        Text.assemble(
+            ("Output: ", "bold"),
+            (str(args.output_path), "cyan"),
+            "\n",
+            ("Audio: ", "bold"),
+            (str(context.audio_path), "cyan"),
+            "\n",
+            ("Audio track: ", "bold"),
+            (str(context.audio_track), "cyan"),
+        ),
+        title="Done",
+        border_style="green",
+    )
+    console.print(summary)
+
+
+def _run_pipeline(
+    bus: EventBus,
+    dashboard: Dashboard,
+    args: ProofArgs,
+    config: AppConfig,
+    force_check: bool,
+) -> PipelineContext:
+    bus.step_started("preflight")
+    results = run_preflight_if_needed(config, force=force_check)
+    if results is None:
+        bus.log("preflight already verified, skipping checks")
+    else:
+        for result in results:
+            status = "OK" if result.ok else "FAILED"
+            level = "INFO" if result.ok else "ERROR"
+            bus.log(f"{result.name}: {status} - {result.detail}", level=level)
+        if not all(result.ok for result in results):
+            failed = [result.name for result in results if not result.ok]
+            message = f"preflight checks failed: {', '.join(failed)}"
+            bus.step_failed("preflight", message)
+            raise click.ClickException(message)
+    bus.step_completed("preflight")
+
+    context = PipelineContext()
+    bus.step_started("extract_audio")
+    try:
+        context = AudioHandler(
+            args,
+            context,
+            bus,
+            track_selector=dashboard.prompt_track,
+        ).extract_audio()
     except RuntimeError as exc:
+        bus.step_failed("extract_audio", str(exc))
         raise click.ClickException(str(exc)) from exc
-    click.echo(f"Extracted audio: {context.audio_path}")
+    bus.step_completed("extract_audio")
+    return context
 
 
 if __name__ == "__main__":
