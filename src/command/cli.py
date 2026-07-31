@@ -6,6 +6,7 @@ import click
 from pydantic import ValidationError
 
 from src.core.config import AppConfig
+from src.entity.context import PipelineContext
 from src.entity.proof import ProofArgs
 from src.handler.audio import AudioHandler
 
@@ -59,10 +60,10 @@ def cli(
     click.echo(f"Model dir: {args.model_dir}")
 
     try:
-        audio_path = AudioHandler(args).extract_audio()
+        context = AudioHandler(args, PipelineContext()).extract_audio()
     except RuntimeError as exc:
         raise click.ClickException(str(exc)) from exc
-    click.echo(f"Extracted audio: {audio_path}")
+    click.echo(f"Extracted audio: {context.audio_path}")
 
 
 if __name__ == "__main__":

@@ -5,14 +5,16 @@ import subprocess
 import tempfile
 from pathlib import Path
 
+from src.entity.context import PipelineContext
 from src.entity.proof import ProofArgs
 
 
 class AudioHandler:
-    def __init__(self, args: ProofArgs) -> None:
+    def __init__(self, args: ProofArgs, context: PipelineContext) -> None:
         self.args = args
+        self.context = context
 
-    def extract_audio(self) -> Path:
+    def extract_audio(self) -> PipelineContext:
         ffmpeg = shutil.which("ffmpeg")
         if ffmpeg is None:
             raise RuntimeError("ffmpeg not found on PATH")
@@ -41,4 +43,5 @@ class AudioHandler:
         if proc.returncode != 0:
             detail = proc.stderr.strip() or proc.stdout.strip()
             raise RuntimeError(f"ffmpeg failed: {detail or 'unknown error'}")
-        return output_path
+        self.context.audio_path = output_path
+        return self.context
