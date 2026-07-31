@@ -62,6 +62,10 @@ def escape_ass(text: str) -> str:
     return text
 
 
+def is_blank(text: str) -> bool:
+    return not text.strip() or set(text.strip()) <= {'\u200b', '\u200c', '\u200d', '\ufeff'}
+
+
 def gen_dialogue(style: str, start: str, end: str, text: str) -> str:
     ass_start = srt_time_to_ass(start)
     ass_end = srt_time_to_ass(end)
@@ -117,9 +121,17 @@ def main():
             clean_trans = trans_escaped.removeprefix("##注释").lstrip()
             text = f"{{\\fad(120,120)}}{clean_trans}"
             style = "注释"
-        else:
+        elif not is_blank(trans_escaped) and not is_blank(orig_escaped):
             text = f"{{\\fad(120,120)}}{trans_escaped}\\N{{\\rOriginal}}{orig_escaped}"
             style = "Default"
+        elif not is_blank(trans_escaped):
+            text = f"{{\\fad(120,120)}}{trans_escaped}"
+            style = "Default"
+        elif not is_blank(orig_escaped):
+            text = f"{{\\fad(120,120)}}{orig_escaped}"
+            style = "Default"
+        else:
+            continue
 
         out_lines.append(gen_dialogue(style, start, end, text))
 
