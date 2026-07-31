@@ -6,8 +6,13 @@ from pathlib import Path
 import pysubs2
 import pytest
 
-from src.repair.models import AsrSegment, ReviewOperation
-from src.repair.workflow import RepairError, RepairOptions, run_repair
+from src.repair.models import AsrSegment, ReviewOperation, SubtitleMatch
+from src.repair.workflow import (
+    RepairError,
+    RepairOptions,
+    _expand_operation_evidence,
+    run_repair,
+)
 
 
 ASS_CONTENT = """[Script Info]
@@ -220,3 +225,20 @@ def test_workflow_runs_asr_once_for_multiple_llm_chunks(tmp_path: Path) -> None:
     )
 
     assert asr.calls == 1
+
+
+def test_revision_keeps_full_deterministic_asr_span() -> None:
+    operation = ReviewOperation(
+        action="revise",
+        subtitle_ids=(1,),
+        asr_ids=(2,),
+        text="corrected",
+        reason="text correction",
+    )
+
+    expanded = _expand_operation_evidence(
+        [operation],
+        {1: SubtitleMatch(1, (1, 2), 0.95)},
+    )
+
+    assert expanded[0].asr_ids == (1, 2)

@@ -32,6 +32,8 @@ class WhisperXASR:
         device: str,
         vad_method: str = "silero",
         batch_size: int | None = None,
+        chunk_size: int = 5,
+        align: bool = False,
         on_progress: ProgressCallback = null_callback,
     ) -> list[AsrSegment]:
         try:
@@ -52,6 +54,7 @@ class WhisperXASR:
             raw = model.transcribe(
                 audio,
                 batch_size=batch_size or get_int("whisper", "batch_size", fallback=8),
+                chunk_size=chunk_size,
                 language=language,
             )
             detected_language = raw.get("language") or language or get(
@@ -60,14 +63,16 @@ class WhisperXASR:
                 fallback="en",
             )
             self.last_language = str(detected_language)
-            segments = self._align(
-                whisperx,
-                raw.get("segments", []),
-                audio,
-                detected_language,
-                device,
-                on_progress,
-            )
+            segments = raw.get("segments", [])
+            if align:
+                segments = self._align(
+                    whisperx,
+                    segments,
+                    audio,
+                    detected_language,
+                    device,
+                    on_progress,
+                )
         except Exception as error:
             if isinstance(error, AsrError):
                 raise

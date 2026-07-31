@@ -6,7 +6,7 @@ import os
 import shutil
 import tempfile
 from collections.abc import Iterable
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from pathlib import Path
 from typing import Any, Protocol
 
@@ -16,6 +16,7 @@ from .chunks import belongs_to_body, build_chunks
 from .matcher import match_cues_to_asr
 from .models import AsrSegment, Chunk, ReviewOperation, SubtitleMatch
 from .operations import apply_operations
+from .segmenter import split_asr_segment
 
 
 class RepairError(Exception):
@@ -77,6 +78,8 @@ class RepairOptions:
     device: str = "cuda"
     vad_method: str = "silero"
     batch_size: int | None = None
+    asr_chunk_seconds: int = 5
+    align: bool = False
     track_index: int | None = None
     force: bool = False
     work_dir: Path | None = None
@@ -232,6 +235,21 @@ def _timing_operations(
     ]
 
 
+def _expand_operation_evidence(
+    operations: Iterable[ReviewOperation],
+    matches: dict[int, SubtitleMatch],
+) -> list[ReviewOperation]:
+    expanded: list[ReviewOperation] = []
+    for operation in operations:
+        if operation.action in {"keep", "revise"} and len(operation.subtitle_ids) == 1:
+            match = matches.get(operation.subtitle_ids[0])
+            if match is not None:
+                expanded.append(replace(operation, asr_ids=match.asr_ids))
+                continue
+        expanded.append(operation)
+    return expanded
+
+
 def _unique_values(values: Iterable[int | str]) -> list[int | str]:
     return list(dict.fromkeys(values))
 
@@ -362,6 +380,8 @@ def run_repair(
                 device=options.device,
                 vad_method=options.vad_method,
                 batch_size=options.batch_size,
+                chunk_size=options.asr_chunk_seconds,
+                align=options.align,
                 on_progress=on_progress,
             )
             detected_language = getattr(asr, "last_language", None) or detected_language
@@ -370,8 +390,13 @@ def run_repair(
             _write_reports(asr_path, review_path, [], [], [], [], errors)
             raise RepairError(f"full ASR failed; see {review_path}") from error
 
-    all_asr, next_asr_id = _normalise_asr_segments(
-        raw_segments,
+    sentence_segments = [
+        part
+        for segment in raw_segments
+        for part in split_asr_segment(segment)
+    ]
+    all_asr, _ = _normalise_asr_segments(
+        sentence_segments,
         chunk_id=None,
         next_id=next_asr_id,
     )
@@ -425,6 +450,7 @@ def run_repair(
             )
 
     matches = match_cues_to_asr(document.cues.values(), all_asr)
+    all_operations = _expand_operation_evidence(all_operations, matches)
     timing_operations = _timing_operations(matches, all_operations)
     report_operations = timing_operations + all_operations
     apply_report = apply_operations(

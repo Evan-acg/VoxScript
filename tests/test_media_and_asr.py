@@ -85,6 +85,7 @@ def test_whisperx_asr_returns_absolute_segment_times(monkeypatch: object, tmp_pa
     ]
     assert load_kwargs["vad_method"] == "silero"
     assert transcribe_kwargs["batch_size"] == 16
+    assert transcribe_kwargs["chunk_size"] == 5
     assert align_calls == 1
 
 

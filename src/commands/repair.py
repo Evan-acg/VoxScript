@@ -89,6 +89,18 @@ from ..repair.workflow import RepairOptions, run_repair
     help="WhisperX inference batch size; increase only when VRAM allows.",
 )
 @click.option(
+    "--asr-chunk-seconds",
+    type=click.IntRange(min=1),
+    default=lambda: get("whisper", "chunk_size", fallback="5"),
+    show_default=True,
+    help="Raw ASR VAD chunk size before LLM matching.",
+)
+@click.option(
+    "--align",
+    is_flag=True,
+    help="Run the slower WhisperX alignment pass for tighter timestamps.",
+)
+@click.option(
     "--track",
     "track_index",
     type=click.IntRange(min=0),
@@ -129,6 +141,8 @@ def repair(
     device: str,
     vad_method: str,
     batch_size: int,
+    asr_chunk_seconds: int,
+    align: bool,
     track_index: int | None,
     llm_model: str,
     work_dir: Path | None,
@@ -155,6 +169,8 @@ def repair(
                     device=device,
                     vad_method=vad_method,
                     batch_size=batch_size,
+                    asr_chunk_seconds=asr_chunk_seconds,
+                    align=align,
                     track_index=track_index,
                     force=force,
                     work_dir=work_dir,

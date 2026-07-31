@@ -47,6 +47,8 @@ uv run starter.py repair --video video.mkv --subtitle original.ass --output repa
 | `--device` | 配置值 | `cpu` 或 `cuda` |
 | `--vad-method` | `silero` | VAD 后端，`silero` 更快 |
 | `--batch-size` | `16` | WhisperX 批量大小 |
+| `--asr-chunk-seconds` | `5` | 原始 ASR 句段长度 |
+| `--align` | 关闭 | 启用较慢的 WhisperX 对齐 |
 | `--track` | 第一个音轨 | FFmpeg 音频流索引 |
 | `--llm-model` | 配置值 | LLM 模型名 |
 | `--keep-artifacts` | 关闭 | 保留中间文件 |
@@ -59,20 +61,22 @@ uv run starter.py repair --video video.mkv --subtitle original.ass --output repa
 ```text
 video.mkv + original.ass
         ↓
-固定分段和上下文
+FFmpeg 一次提取全片音频
         ↓
-FFmpeg 提取分段音频
+WhisperX 一次生成句段级 ASR 时间证据
         ↓
-WhisperX 生成 ASR 时间证据
+程序匹配全部字幕和 ASR
         ↓
-LLM 返回字幕 ID 和 ASR ID 的修改操作
+LLM 按窗口返回文本修正和缺失字幕操作
         ↓
 程序计算时间并回写 ASS
         ↓
 repaired.ass
 ```
 
-LLM 不生成时间戳。程序使用第一个 ASR 片段的开始时间和最后一个 ASR 片段的结束时间，并分别添加 `0.10` 秒和 `0.20` 秒缓冲。
+LLM 不生成时间戳。程序先使用全量 ASR 匹配所有可识别字幕，再使用第一个 ASR 片段的开始时间和最后一个 ASR 片段的结束时间，并分别添加 `0.10` 秒和 `0.20` 秒缓冲。LLM 只覆盖文本修正、缺失字幕和明确的不确定操作。
+
+默认使用 Silero VAD、5 秒原始 ASR chunk 和句段级时间，不运行较慢的 WhisperX 对齐。需要更细时间时可以增加 `--align`，但会显著增加耗时。
 
 ASS 的原始样式、层级、名称、边距、效果和内嵌标签会被保留。程序只修改事件的开始时间、结束时间和文本。
 
