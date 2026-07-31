@@ -34,7 +34,7 @@ class DeterminateProgress(ProgressStrategy):
     def __init__(self, console: Console | None = None) -> None:
         super().__init__(console)
         self._progress = Progress(
-            BarColumn(),
+            BarColumn(bar_width=None),
             TextColumn("[bold]{task.description}"),
             TextColumn("{task.percentage:>3.0f}%"),
             TimeElapsedColumn(),
