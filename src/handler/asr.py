@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 import tempfile
 from pathlib import Path
 
@@ -8,6 +9,9 @@ import whisperx
 from src.core.events import EventBus
 from src.entity.context import PipelineContext
 from src.entity.proof import ProofArgs
+
+_SAMPLE_RATE = 16000
+_CHUNK_SIZE = 30.0
 
 
 class AsrHandler:
@@ -38,12 +42,11 @@ class AsrHandler:
             vad_method="silero",
         )
 
+        self.bus.log("loading audio ...")
+        audio = whisperx.load_audio(str(self.context.audio_path))
+
         self.bus.log("transcribing audio ...")
-        result = model.transcribe(
-            str(self.context.audio_path),
-            language=self.language,
-        )
-        segments = result.get("segments", [])
+        segments = self._transcribe_chunks(model, audio)
 
         work_dir = Path(tempfile.mkdtemp(prefix="voxscript_"))
         output_path = work_dir / f"{self.args.input_path.stem}.srt"
@@ -52,6 +55,42 @@ class AsrHandler:
         self.context.transcript_path = output_path
         self.bus.log(f"transcription complete: {len(segments)} segments")
         return self.context
+
+    def _transcribe_chunks(self, model, audio) -> list[dict]:
+        duration = len(audio) / _SAMPLE_RATE
+        if duration <= 0:
+            return []
+
+        chunk_count = math.ceil(duration / _CHUNK_SIZE)
+        detected_language: str | None = None
+        all_segments: list[dict] = []
+
+        for index in range(chunk_count):
+            start = index * _CHUNK_SIZE
+            end = min((index + 1) * _CHUNK_SIZE, duration)
+            slice_audio = audio[
+                int(start * _SAMPLE_RATE) : int(end * _SAMPLE_RATE)
+            ]
+            if len(slice_audio) == 0:
+                continue
+
+            language = self.language or detected_language
+            result = model.transcribe(
+                slice_audio,
+                language=language,
+                print_progress=False,
+            )
+            if detected_language is None and result.get("language"):
+                detected_language = result["language"]
+
+            for segment in result.get("segments", []):
+                segment["start"] = round(float(segment["start"]) + start, 3)
+                segment["end"] = round(float(segment["end"]) + start, 3)
+                all_segments.append(segment)
+
+            self.bus.set_progress("transcribe", (index + 1) / chunk_count * 100)
+
+        return all_segments
 
     @staticmethod
     def _write_srt(segments: list[dict], output_path: Path) -> None:
