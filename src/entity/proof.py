@@ -11,12 +11,20 @@ class ProofArgs(BaseModel):
     input_path: Path
     subtitle_paths: list[Path]
     output_path: Path | None = None
+    model_dir: Path
 
     @field_validator("input_path")
     @classmethod
     def _validate_input(cls, value: Path) -> Path:
         if not value.is_file():
             raise ValueError(f"input file does not exist: {value}")
+        return value
+
+    @field_validator("model_dir")
+    @classmethod
+    def _validate_model_dir(cls, value: Path) -> Path:
+        if not value.is_dir():
+            raise ValueError(f"model directory does not exist: {value}")
         return value
 
     @field_validator("subtitle_paths")
