@@ -43,4 +43,11 @@ class SubtitleHandler:
         transcript = parse_subtitle_file(transcript_path, label="transcript")
         self.bus.log(f"transcript: {len(transcript.segments)} cues parsed")
 
+        transcript_output = (
+            self.context.run_dir / f"{self.args.input_path.stem}.transcript.normalized.json"
+        )
+        write_normalized_json(transcript, transcript_output)
+        self.bus.log(f"transcript normalized: {transcript_output}")
+
+        self.context.transcript_normalized_path = transcript_output
         self.context.transcript_segments = transcript.segments
