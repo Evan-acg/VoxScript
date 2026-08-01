@@ -15,6 +15,7 @@ from src.entity.context import PipelineContext
 from src.entity.proof import ProofArgs
 from src.handler.asr import AsrHandler
 from src.handler.audio import AudioHandler
+from src.handler.subtitle import SubtitleHandler
 from src.ui.dashboard import Dashboard
 
 console = Console()
@@ -164,6 +165,14 @@ def _run_pipeline(
         bus.step_failed("transcribe", str(exc))
         raise click.ClickException(str(exc)) from exc
     bus.step_completed("transcribe")
+
+    bus.step_started("normalize_subtitles")
+    try:
+        context = SubtitleHandler(args, context, bus).normalize()
+    except RuntimeError as exc:
+        bus.step_failed("normalize_subtitles", str(exc))
+        raise click.ClickException(str(exc)) from exc
+    bus.step_completed("normalize_subtitles")
     return context
 
 
