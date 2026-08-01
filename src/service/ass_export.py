@@ -98,15 +98,45 @@ def _render_dialogue(dialogue: NormalizedDialogue) -> str:
 
 
 def _render_lines(lines: list[DialogueLine]) -> tuple[str, str]:
-    style = lines[0].style
+    if len(lines) <= 2:
+        style = lines[0].style
+        parts: list[str] = []
+        current = style
+        for line in lines:
+            if line.style == current:
+                parts.append(line.content)
+            else:
+                parts.append(f"{{\\r{line.style}}}{line.content}")
+                current = line.style
+        return style, "\\N".join(parts)
+    groups: list[tuple[str, list[str]]] = []
+    for line in lines:
+        for style, contents in groups:
+            if style == line.style:
+                contents.append(line.content)
+                break
+        else:
+            groups.append((line.style, [line.content]))
+    merged: list[tuple[str, str]] = [
+        (style, " ".join(contents)) for style, contents in groups
+    ]
+    if len(merged) > 2:
+        head = merged[:2]
+        rest = " ".join(text for _, text in merged[2:])
+        head[1] = (
+            head[1][0],
+            head[1][1] + (" " if head[1][1] else "") + rest,
+        )
+        merged = head
+    style = merged[0][0]
     parts: list[str] = []
     current = style
-    for line in lines:
-        if line.style == current:
-            parts.append(line.content)
+    for item_style, text in merged:
+        if item_style == current:
+            parts.append(text)
         else:
-            parts.append(f"{{\\r{line.style}}}{line.content}")
-            current = line.style
+            parts.append(f"{{\\r{item_style}}}{text}")
+            current = item_style
     return style, "\\N".join(parts)
 
 
