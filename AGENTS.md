@@ -11,6 +11,7 @@
 - 分层：`src/command`（编排：`cli.py` 入口 + `pipeline.py` 管线）→ `src/handler`（步骤适配：事件/上下文，无实际处理逻辑）→ `src/service`（纯功能层：ffmpeg/whisperx/字幕解析，不依赖 bus/context/args，可独立调用）→ `src/entity`（pydantic 模型）→ `src/parser`（字幕解析策略）→ `src/ui`（rich Live 面板）；`src/core` 为 events/config/preflight。
 - 管线模式：`src/command/pipeline.py` 的 `build_pipeline()` 是步骤清单的唯一事实来源（preflight → extract_audio → load_model → transcribe → normalize_subtitles；generate_ass 未实现，实现时再挂步骤）。`Pipeline` 统一管理步骤生命周期：`step_started` → `run()` →（`RuntimeError`/`ClickException` → `step_failed`）→ `step_completed`，handler 全部在其中构造，`AsrHandler` 一次构造、load_model/transcribe 两步复用。`cli.py` 仅负责：构建 args/config/bus/dashboard → `dashboard.set_steps(pipeline.names)` 同步 UI 步骤清单 → `pipeline.run()` → 打印汇总（读 `pipeline.context`）。
 - `EventBus` 解耦流水线与 UI（step_started/completed/failed + log + progress）。
+- Dashboard 不启用 rich `Live` 自带的 IO 重定向（其 `FileProxy.flush` 会把无换行文本按 markup 解析，拆散 ANSI 转义产生裸 `[0m`）；改用 `src/ui/proxy.py` 的 `ConsoleProxy`（`markup=False` 原样输出，`rich_proxied_file` 契约防递归），`Dashboard.start()/stop()` 幂等安装/恢复 stdout/stderr，第三方输出（whisperx print、tqdm 彩色条）照常显示且字节流干净。
 - 坑：步骤清单只存在于 `build_pipeline` 一处（不再有 `ui/steps.py` 的 `PIPELINE_STEPS` 常量）；`Dashboard.set_steps()` 必须在 `pipeline.run()` 之前调用，否则 `StepsView` KeyError。
 - `PipelineContext` 是单例可变对象，按引用贯穿所有 handler。中间产物（.wav/.srt）目录由 `context.run_dir` 统一管理：`vox_YYYYMMDD_HHMMSS` 子目录，根目录取 `config.yaml` 的 `work_dir`，未配置回退系统 temp。
 

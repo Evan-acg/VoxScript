@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import sys
 from typing import Any
 
 from rich.columns import Columns
@@ -12,6 +13,7 @@ from src.ui.layout import LayoutComposer
 from src.ui.logs import LogView
 from src.ui.progress import ProgressView
 from src.ui.prompt import TrackPrompt
+from src.ui.proxy import ConsoleProxy
 from src.ui.steps import StepsView
 
 
@@ -40,13 +42,31 @@ class Dashboard:
             console=self._console,
             screen=True,
             refresh_per_second=8,
+            redirect_stdout=False,
+            redirect_stderr=False,
         )
         self._live.start()
+        self._install_proxy()
 
     def stop(self) -> None:
         if self._live is not None:
             self._live.stop()
             self._live = None
+        self._restore_proxy()
+
+    def _install_proxy(self) -> None:
+        if isinstance(sys.stdout, ConsoleProxy):
+            return
+        self._orig_stdout = sys.stdout
+        self._orig_stderr = sys.stderr
+        sys.stdout = ConsoleProxy(self._console, self._orig_stdout)
+        sys.stderr = ConsoleProxy(self._console, self._orig_stderr)
+
+    def _restore_proxy(self) -> None:
+        if isinstance(sys.stdout, ConsoleProxy):
+            sys.stdout = self._orig_stdout
+        if isinstance(sys.stderr, ConsoleProxy):
+            sys.stderr = self._orig_stderr
 
     def pause(self) -> None:
         self.stop()
