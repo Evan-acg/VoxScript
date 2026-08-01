@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import Callable
 
 import click
 from pydantic import ValidationError
@@ -12,11 +13,61 @@ from rich.text import Text
 from src.command.pipeline import build_pipeline
 from src.core.config import AppConfig
 from src.core.events import EventBus
+from src.entity.context import PipelineContext
 from src.entity.proof import ProofArgs
 from src.entity.translate import LLMConfig
 from src.ui.dashboard import Dashboard
 
 console = Console()
+
+
+def _fmt_paths(paths: list[Path]) -> str:
+    return ", ".join(str(path) for path in paths) or "n/a"
+
+
+_STEP_ARTIFACTS: dict[str, list[tuple[str, Callable[[PipelineContext], str]]]] = {
+    "extract_audio": [
+        ("Audio: ", lambda ctx: str(ctx.audio_path) if ctx.audio_path else "n/a"),
+        (
+            "Audio track: ",
+            lambda ctx: str(ctx.audio_track) if ctx.audio_track is not None else "n/a",
+        ),
+    ],
+    "transcribe": [
+        (
+            "Transcript: ",
+            lambda ctx: str(ctx.transcript_path) if ctx.transcript_path else "n/a",
+        ),
+    ],
+    "normalize_subtitles": [
+        (
+            "Transcript (normalized): ",
+            lambda ctx: (
+                str(ctx.transcript_normalized_path)
+                if ctx.transcript_normalized_path
+                else "n/a"
+            ),
+        ),
+        ("Normalized: ", lambda ctx: _fmt_paths(ctx.normalized_paths)),
+    ],
+    "split_transcript": [
+        (
+            "Transcript (split): ",
+            lambda ctx: str(ctx.split_json_path) if ctx.split_json_path else "n/a",
+        ),
+    ],
+    "map_timeline": [
+        ("Mapped: ", lambda ctx: _fmt_paths(ctx.mapped_paths)),
+        ("Reports: ", lambda ctx: _fmt_paths(ctx.mapping_report_paths)),
+    ],
+    "translate_subtitles": [
+        ("Translated: ", lambda ctx: _fmt_paths(ctx.translated_paths)),
+        (
+            "Translation reports: ",
+            lambda ctx: _fmt_paths(ctx.translation_report_paths),
+        ),
+    ],
+}
 
 
 @click.command()
@@ -246,52 +297,18 @@ def cli(
     dashboard.print_snapshot()
 
     context = pipeline.context
-    normalized = ", ".join(str(p) for p in context.normalized_paths) or "n/a"
+    artifacts = {
+        **_STEP_ARTIFACTS,
+        "export_ass": [("Output: ", lambda ctx: str(args.output_path))],
+    }
+    parts: list[tuple[str, str]] = []
+    for name in pipeline.names:
+        for label, getter in artifacts.get(name, []):
+            parts.append((label, "bold"))
+            parts.append((getter(context), "cyan"))
+            parts.append(("\n", ""))
     done_panel = Panel(
-        Text.assemble(
-            ("Output: ", "bold"),
-            (str(args.output_path), "cyan"),
-            "\n",
-            ("Audio: ", "bold"),
-            (str(context.audio_path), "cyan"),
-            "\n",
-            ("Audio track: ", "bold"),
-            (str(context.audio_track), "cyan"),
-            "\n",
-            ("Transcript: ", "bold"),
-            (str(context.transcript_path), "cyan"),
-            "\n",
-            ("Transcript (normalized): ", "bold"),
-            (str(context.transcript_normalized_path), "cyan"),
-            "\n",
-            ("Transcript (split): ", "bold"),
-            (str(context.split_json_path), "cyan"),
-            "\n",
-            ("Mapped: ", "bold"),
-            (", ".join(str(p) for p in context.mapped_paths) or "n/a", "cyan"),
-            "\n",
-            ("Reports: ", "bold"),
-            (
-                ", ".join(str(p) for p in context.mapping_report_paths) or "n/a",
-                "cyan",
-            ),
-            "\n",
-            ("Translated: ", "bold"),
-            (
-                ", ".join(str(p) for p in context.translated_paths) or "n/a",
-                "cyan",
-            ),
-            "\n",
-            ("Translation reports: ", "bold"),
-            (
-                ", ".join(str(p) for p in context.translation_report_paths)
-                or "n/a",
-                "cyan",
-            ),
-            "\n",
-            ("Normalized: ", "bold"),
-            (normalized, "cyan"),
-        ),
+        Text.assemble(*parts),
         title="Done",
         border_style="green",
     )
