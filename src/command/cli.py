@@ -99,6 +99,7 @@ def cli(
     dashboard.print_snapshot()
 
     context = pipeline.context
+    normalized = ", ".join(str(p) for p in context.normalized_paths) or "n/a"
     summary = Panel(
         Text.assemble(
             ("Output: ", "bold"),
@@ -112,6 +113,9 @@ def cli(
             "\n",
             ("Transcript: ", "bold"),
             (str(context.transcript_path), "cyan"),
+            "\n",
+            ("Normalized: ", "bold"),
+            (normalized, "cyan"),
         ),
         title="Done",
         border_style="green",
