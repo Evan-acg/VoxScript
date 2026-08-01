@@ -24,6 +24,7 @@ _LEAD = 0.2
 _END_MARGIN = 0.1
 _GAP = 0.1
 _OVERLAP_OK = 0.5
+_MIN_EXTRA_DURATION = 0.5
 _LATIN_WRAP = 42
 _CJK_WRAP = 22
 _DURATION_TOLERANCE = 0.05
@@ -32,7 +33,25 @@ _CREDIT_RE = re.compile(
     r"翻译|字幕|压制|校对|校译|片源|staff|translated|subtitles|encoding|typeset",
     re.IGNORECASE,
 )
-_SYMBOL_RE = re.compile(r"^[\s.,!?;:·、，。！？…~\-—()\[\]{}「」『』""'']*$")
+_SYMBOL_RE = re.compile(
+    r"^[\s.,!?;:·、，。！？…~\-—()\[\]{}「」『』""''♪♫♬]*$"
+)
+_ANNOTATION_STYLES = {"comment", "note", "notes", "annotation", "lyrics"}
+_ANNOTATION_PREFIXES = (
+    "注释",
+    "说明",
+    "备注",
+    "按语",
+    "注:",
+    "注：",
+    "NOTE:",
+    "NOTE：",
+    "Note:",
+    "Note：",
+    "note:",
+    "note：",
+)
+_ANNOTATION_BRACKET_RE = re.compile(r"^[\[({【［（][\s\S]*[\]})】｝）][\s.!。]*$")
 _CJK_PUNCT = "、，。！？"
 _CJK_PARTICLES = "はがのにをでとも"
 
@@ -107,16 +126,12 @@ def map_transcript(
     report.matches(len(pairs))
 
     _align_pairs(pairs)
-
-    if corrector.match_kind == "overlap":
-        _handle_isolated(b_entries, a_entries, pairs, video_end, report)
+    _handle_isolated(b_entries, pairs, video_end, report)
 
     _fill_text(b_entries, a_entries, pairs, english_style, splitter)
 
     if m > n:
         _append_extra(b_entries, a_entries, pairs, english_style, splitter, report)
-    elif m < n:
-        _handle_missing(b_entries, a_entries, m, report)
 
     _validate_output(b_entries, a_entries, pairs, report)
 
@@ -132,6 +147,24 @@ def _a_text(dialogue: NormalizedDialogue, splitter: SentenceSplitter) -> str:
     return splitter.join_text(
         [line.content for line in dialogue.lines if line.content]
     ).strip()
+
+
+def _is_annotation(b_entry: _BEntry) -> bool:
+    if any(
+        line.style and line.style.strip().lower() in _ANNOTATION_STYLES
+        for line in b_entry.lines
+    ):
+        return True
+    content = " ".join(
+        line.content for line in b_entry.lines if line.content
+    ).strip()
+    if not content:
+        return True
+    if _SYMBOL_RE.match(content):
+        return True
+    if _ANNOTATION_BRACKET_RE.match(content):
+        return True
+    return content.startswith(_ANNOTATION_PREFIXES)
 
 
 def _sample_text(a: NormalizedSubtitle) -> str:
@@ -194,9 +227,24 @@ def _match(
     k: int,
 ) -> list[tuple[_AEntry, _BEntry]]:
     if corrector.match_kind == "sequential":
-        return [(a_entries[i], b_entries[i]) for i in range(k)]
+        pairs: list[tuple[_AEntry, _BEntry]] = []
+        b_index = 0
+        for i in range(k):
+            while b_index < len(b_entries) and _is_annotation(b_entries[b_index]):
+                b_entries[b_index].notes.append(
+                    "annotation, excluded from pairing"
+                )
+                b_index += 1
+            if b_index >= len(b_entries):
+                break
+            pairs.append((a_entries[i], b_entries[b_index]))
+            b_index += 1
+        return pairs
     candidates: list[tuple[float, _AEntry, _BEntry]] = []
     for b_entry in b_entries:
+        if _is_annotation(b_entry):
+            b_entry.notes.append("annotation, excluded from pairing")
+            continue
         best_ratio, best = 0.0, None
         for a_entry in a_entries:
             ratio = _overlap_ratio(b_entry.start, b_entry.end, a_entry.start, a_entry.end)
@@ -237,22 +285,27 @@ def _align_pairs(pairs: list[tuple[_AEntry, _BEntry]]) -> None:
 
 def _handle_isolated(
     b_entries: list[_BEntry],
-    a_entries: list[_AEntry],
     pairs: list[tuple[_AEntry, _BEntry]],
     video_end: float,
     report: _Report,
 ) -> None:
     paired = {id(b_entry) for _, b_entry in pairs}
+    paired_texts = [
+        (
+            " ".join(
+                line.content for line in b_entry.lines if line.content
+            ).strip(),
+            b_entry.start,
+            b_entry.end,
+        )
+        for _, b_entry in pairs
+    ]
     for b_entry in b_entries:
         if id(b_entry) in paired:
             continue
-        content = " ".join(line.content for line in b_entry.lines)
-        if _SYMBOL_RE.match(content):
-            b_entry.action = "deleted"
-            report.record(
-                f"isolated deleted (symbols only): #{b_entry.source.index}"
-            )
-            continue
+        content = " ".join(
+            line.content for line in b_entry.lines if line.content
+        ).strip()
         if (b_entry.start > video_end or b_entry.end < 0) and _CREDIT_RE.search(
             content
         ):
@@ -261,20 +314,32 @@ def _handle_isolated(
                 f"#{b_entry.source.index}"
             )
             continue
-        closest = max(
-            a_entries,
-            key=lambda a_entry: _overlap_ratio(
-                b_entry.start, b_entry.end, a_entry.start, a_entry.end
-            ),
-        )
-        b_entry.start = closest.start
-        b_entry.end = closest.end
-        b_entry.matched_a = closest.index
-        b_entry.action = "overwritten"
-        report.record(
-            f"isolated overwritten with nearest cue: #{b_entry.source.index} "
-            f"<- A#{closest.index}"
-        )
+        if content and any(
+            text == content
+            and _overlap_ratio(b_entry.start, b_entry.end, start, end) >= 0.8
+            for text, start, end in paired_texts
+        ):
+            b_entry.action = "deleted"
+            report.record(
+                f"duplicate of paired cue deleted: #{b_entry.source.index}"
+            )
+            continue
+        b_entry.action = "kept_extra"
+        if _is_annotation(b_entry):
+            report.record(
+                f"annotation kept as-is (not in audio): "
+                f"#{b_entry.source.index}"
+            )
+        elif _CREDIT_RE.search(content):
+            report.record(
+                f"isolated kept unchanged (credit info): "
+                f"#{b_entry.source.index}"
+            )
+        else:
+            report.warning(
+                f"no golden match, original kept: "
+                f"#{b_entry.source.index} {content[:30]!r}"
+            )
 
 
 def _fill_text(
@@ -385,32 +450,6 @@ def _set_english_lines(
     ]
 
 
-def _handle_missing(
-    b_entries: list[_BEntry],
-    a_entries: list[_AEntry],
-    m: int,
-    report: _Report,
-) -> None:
-    for b_entry in b_entries[m:]:
-        if b_entry.matched_a is not None:
-            continue
-        content = " ".join(line.content for line in b_entry.lines)
-        if _SYMBOL_RE.match(content):
-            b_entry.action = "deleted"
-            report.record(
-                f"missing-text deleted (symbols only): #{b_entry.source.index}"
-            )
-        elif _CREDIT_RE.search(content):
-            report.record(
-                f"missing-text kept unchanged (credit info): #{b_entry.source.index}"
-            )
-        else:
-            report.warning(
-                f"missing text for valid speech, original kept: "
-                f"#{b_entry.source.index} {content[:30]!r}"
-            )
-
-
 def _validate_output(
     b_entries: list[_BEntry],
     a_entries: list[_AEntry],
@@ -450,14 +489,22 @@ def _validate_output(
                 original_start = entry.start
                 entry.start = prev.end + _GAP
                 if entry.start > entry.end:
-                    entry.action = "deleted"
-                    deleted += 1
-                    report.record(
-                        f"duplicate/degenerate cue deleted: "
-                        f"B#{entry.source.index} "
-                        f"{original_start}..{entry.end}"
-                    )
-                    continue
+                    if entry.action == "kept_extra":
+                        entry.end = entry.start + _MIN_EXTRA_DURATION
+                        report.record(
+                            f"kept_extra clamped after previous cue: "
+                            f"B#{entry.source.index} "
+                            f"{original_start}..{entry.end}"
+                        )
+                    else:
+                        entry.action = "deleted"
+                        deleted += 1
+                        report.record(
+                            f"duplicate/degenerate cue deleted: "
+                            f"B#{entry.source.index} "
+                            f"{original_start}..{entry.end}"
+                        )
+                        continue
             fixed += 1
         prev = entry
     kept = [entry for entry in kept if entry.action != "deleted"]

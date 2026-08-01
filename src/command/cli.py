@@ -84,8 +84,9 @@ _STEP_ARTIFACTS: dict[str, list[tuple[str, Callable[[PipelineContext], str]]]] =
     "--subtitle",
     "subtitle_paths",
     multiple=True,
-    required=True,
-    help="Subtitle file path, repeatable.",
+    default=None,
+    help="Subtitle file path, repeatable; optional - when omitted, "
+    "the output subtitles come entirely from the whisper transcript.",
 )
 @click.option(
     "-o",

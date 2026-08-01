@@ -30,6 +30,37 @@ class MapHandler:
         golden = NormalizedSubtitle.model_validate_json(
             self.context.split_json_path.read_text(encoding="utf-8")
         )
+        if not self.context.user_subtitles:
+            output_path = (
+                self.context.run_dir
+                / f"{self.args.input_path.stem}.transcript.mapped.json"
+            )
+            converted = golden.model_copy(
+                update={
+                    "styles": {"Eng": {}},
+                    "dialogue": [
+                        dialogue.model_copy(
+                            update={
+                                "lines": [
+                                    line.model_copy(update={"style": "Eng"})
+                                    for line in dialogue.lines
+                                ]
+                            }
+                        )
+                        for dialogue in golden.dialogue
+                    ],
+                }
+            )
+            text = (
+                converted.model_dump_json(indent=2, ensure_ascii=False) + "\n"
+            )
+            output_path.write_text(text, encoding="utf-8")
+            self.context.mapped_paths.append(output_path)
+            self.bus.log(
+                "no user subtitles; using golden transcript as mapped output: "
+                f"{len(converted.dialogue)} cues"
+            )
+            return
         for subtitle in self.context.user_subtitles:
             self.bus.log(f"mapping {subtitle.path.name} onto golden transcript ...")
             result = map_transcript(
