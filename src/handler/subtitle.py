@@ -3,7 +3,7 @@ from __future__ import annotations
 from src.core.events import EventBus
 from src.entity.context import PipelineContext
 from src.entity.proof import ProofArgs
-from src.service.subtitle import parse_subtitle_file, write_srt
+from src.service.subtitle import parse_subtitle_file, write_normalized_json
 
 
 class SubtitleHandler:
@@ -30,8 +30,8 @@ class SubtitleHandler:
             self.bus.log(f"{path.name}: {len(parsed.segments)} cues parsed")
             user_subtitles.append(parsed)
 
-            output_path = self.context.run_dir / f"{path.stem}.normalized.srt"
-            write_srt(parsed.segments, output_path)
+            output_path = self.context.run_dir / f"{path.stem}.normalized.json"
+            write_normalized_json(parsed, output_path)
             normalized_paths.append(output_path)
             self.bus.log(f"normalized subtitle written: {output_path}")
 

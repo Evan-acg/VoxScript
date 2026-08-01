@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import re
 
-from src.entity.subtitle import SubtitleSegment
+from src.entity.subtitle import DialogueLine, SubtitleSegment
 from src.parser.base import SubtitleParser
 
 _TIME_RE = re.compile(
@@ -32,7 +32,9 @@ def _split_blocks(content: str) -> list[list[str]]:
 
 
 class SrtParser(SubtitleParser):
-    def parse(self, content: str) -> list[SubtitleSegment]:
+    def parse(
+        self, content: str
+    ) -> tuple[list[SubtitleSegment], dict[str, dict[str, str]]]:
         segments: list[SubtitleSegment] = []
         for block in _split_blocks(content):
             lines = [line.strip() for line in block]
@@ -51,12 +53,22 @@ class SrtParser(SubtitleParser):
             if time_index > 0 and lines[time_index - 1].isdigit():
                 index = int(lines[time_index - 1])
 
-            text_parts = [
-                _HTML_TAG_RE.sub("", line).strip() for line in lines[time_index + 1 :]
+            text_lines = [
+                re.sub(r"\s+", " ", _HTML_TAG_RE.sub("", line).strip())
+                for line in lines[time_index + 1 :]
             ]
-            text = re.sub(r"\s+", " ", " ".join(part for part in text_parts if part)).strip()
-            if text:
+            text_lines = [line for line in text_lines if line]
+            if text_lines:
                 segments.append(
-                    SubtitleSegment(index=index, start=start, end=end, text=text)
+                    SubtitleSegment(
+                        index=index,
+                        start=start,
+                        end=end,
+                        text="\n".join(text_lines),
+                        lines=[
+                            DialogueLine(style="Default", content=line)
+                            for line in text_lines
+                        ],
+                    )
                 )
-        return segments
+        return segments, {}

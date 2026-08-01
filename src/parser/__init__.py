@@ -42,5 +42,7 @@ def parse_subtitle(path: Path) -> ParsedSubtitle:
         content = _read_text(path)
     except OSError as exc:
         raise RuntimeError(f"cannot read subtitle file: {path}") from exc
-    segments = parser.parse(content)
-    return ParsedSubtitle(path=path, format=subtitle_format, segments=segments)
+    segments, styles = parser.parse(content)
+    return ParsedSubtitle(
+        path=path, format=subtitle_format, styles=styles, segments=segments
+    )
