@@ -447,21 +447,7 @@ def _validate_output(
     pairs: list[tuple[_AEntry, _BEntry]],
     report: _Report,
 ) -> None:
-    kept = [entry for entry in b_entries if entry.action != "deleted"]
-
-    fixed = 0
-    for index in range(len(kept) - 1):
-        if kept[index].end > kept[index + 1].start:
-            new_end = kept[index + 1].start - _GAP
-            if new_end >= kept[index].start:
-                kept[index].end = new_end
-            else:
-                kept[index + 1].start = kept[index].end + _GAP
-            fixed += 1
-    report.validation(
-        "continuity",
-        "PASS" if fixed == 0 else f"FIXED ({fixed} overlaps resolved)",
-    )
+    b_entries.sort(key=lambda entry: (entry.start, entry.end))
 
     overwritten = 0
     for a_entry, b_entry in pairs:
@@ -478,6 +464,38 @@ def _validate_output(
     report.validation(
         "overlap",
         "PASS" if overwritten == 0 else f"FIXED ({overwritten} cues overwritten)",
+    )
+
+    kept = [entry for entry in b_entries if entry.action != "deleted"]
+
+    fixed = 0
+    deleted = 0
+    prev: _BEntry | None = None
+    for entry in kept:
+        if prev is not None and entry.start < prev.end:
+            new_end = entry.start - _GAP
+            if new_end >= prev.start:
+                prev.end = new_end
+            else:
+                original_start = entry.start
+                entry.start = prev.end + _GAP
+                if entry.start > entry.end:
+                    entry.action = "deleted"
+                    deleted += 1
+                    report.record(
+                        f"duplicate/degenerate cue deleted: "
+                        f"B#{entry.source.index} "
+                        f"{original_start}..{entry.end}"
+                    )
+                    continue
+            fixed += 1
+        prev = entry
+    kept = [entry for entry in kept if entry.action != "deleted"]
+    report.validation(
+        "continuity",
+        "PASS"
+        if fixed == 0 and deleted == 0
+        else f"FIXED ({fixed} overlaps resolved, {deleted} cues deleted)",
     )
 
     if kept:
