@@ -31,7 +31,7 @@ if not "%EXIT_CODE%"=="0" (
     echo [ERROR] VoxScript exited with code %EXIT_CODE%.
     goto :fail
 )
-echo Done.
+echo Midterm Test Done.
 exit /b 0
 
 :fail
