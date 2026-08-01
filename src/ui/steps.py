@@ -7,7 +7,14 @@ from rich.text import Text
 from src.core.events import Event, EventType
 from src.ui.view import PanelView, StepStatus
 
-PIPELINE_STEPS = ["preflight", "extract_audio", "transcribe", "generate_ass"]
+PIPELINE_STEPS = [
+    "preflight",
+    "extract_audio",
+    "load_model",
+    "transcribe",
+    "normalize_subtitles",
+    "generate_ass",
+]
 
 _ICONS = {
     StepStatus.DONE: ("\u2713", "green"),

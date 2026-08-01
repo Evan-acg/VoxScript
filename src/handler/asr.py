@@ -5,7 +5,6 @@ import tempfile
 import time
 from pathlib import Path
 
-import click
 import whisperx
 from huggingface_hub.errors import LocalEntryNotFoundError
 
@@ -33,22 +32,26 @@ class AsrHandler:
         self.model_dir = model_dir
         self.model_name = model_name
         self.language = language
+        self.model = None
+
+    def load_model(self) -> None:
+        self.bus.log("loading whisperx model ...")
+        start = time.perf_counter()
+        self.model = self._load_model()
+        elapsed = time.perf_counter() - start
+        self.bus.log(f"whisperx model loaded in {elapsed:.1f}s")
 
     def transcribe(self) -> PipelineContext:
         if self.context.audio_path is None:
             raise RuntimeError("no audio path in context; run audio extraction first")
-
-        self.bus.log("loading whisperx model ...")
-        start = time.perf_counter()
-        model = self._load_model()
-        elapsed = time.perf_counter() - start
-        self.bus.log(f"whisperx model loaded in {elapsed:.1f}s")
+        if self.model is None:
+            raise RuntimeError("whisperx model not loaded; call load_model first")
 
         self.bus.log("loading audio ...")
         audio = whisperx.load_audio(str(self.context.audio_path))
 
         self.bus.log("transcribing audio ...")
-        segments = self._transcribe_chunks(model, audio)
+        segments = self._transcribe_chunks(self.model, audio)
 
         work_dir = Path(tempfile.mkdtemp(prefix="voxscript_"))
         output_path = work_dir / f"{self.args.input_path.stem}.srt"
@@ -78,7 +81,7 @@ class AsrHandler:
         try:
             return whisperx.load_model(self.model_name, local_files_only=False, **kwargs)
         except Exception as exc:
-            raise click.ClickException(
+            raise RuntimeError(
                 f"failed to download whisperx model: {exc}; if the network is slow, "
                 "set HF_ENDPOINT=https://hf-mirror.com in midterm.bat and retry"
             ) from exc

@@ -151,16 +151,25 @@ def _run_pipeline(
         raise click.ClickException(str(exc)) from exc
     bus.step_completed("extract_audio")
 
-    bus.step_started("transcribe")
+    bus.step_started("load_model")
     try:
-        context = AsrHandler(
+        asr = AsrHandler(
             args,
             context,
             bus,
             model_dir=config.model_dir,
             model_name=config.model_name,
             language=language,
-        ).transcribe()
+        )
+        asr.load_model()
+    except RuntimeError as exc:
+        bus.step_failed("load_model", str(exc))
+        raise click.ClickException(str(exc)) from exc
+    bus.step_completed("load_model")
+
+    bus.step_started("transcribe")
+    try:
+        context = asr.transcribe()
     except RuntimeError as exc:
         bus.step_failed("transcribe", str(exc))
         raise click.ClickException(str(exc)) from exc
