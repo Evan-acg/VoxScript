@@ -25,6 +25,7 @@ _END_MARGIN = 0.1
 _GAP = 0.1
 _OVERLAP_OK = 0.5
 _MIN_EXTRA_DURATION = 0.5
+_TEXT_MATCH_GAP = 6.0
 _LATIN_WRAP = 42
 _CJK_WRAP = 22
 _DURATION_TOLERANCE = 0.05
@@ -122,11 +123,20 @@ def map_transcript(
     )
     report.pattern(params, forced_overall=k < 5)
 
-    pairs = _match(a_entries, b_entries, corrector, k)
+    raw_count = _overlap_count(b_entries, a_entries)
+    original_times = [(entry.start, entry.end) for entry in b_entries]
+    _correct_times(b_entries, corrector, params)
+    if _overlap_count(b_entries, a_entries) < raw_count:
+        for entry, (start, end) in zip(b_entries, original_times, strict=True):
+            entry.start, entry.end = start, end
+        report.record("pattern correction rejected: worsens overlap matching")
+
+    pairs = _match(a_entries, b_entries)
+    _pair_by_text(a_entries, b_entries, pairs, english_style, report)
     report.matches(len(pairs))
 
     _align_pairs(pairs)
-    _handle_isolated(b_entries, pairs, video_end, report)
+    _handle_isolated(b_entries, pairs, video_end, english_style, report)
 
     _fill_text(b_entries, a_entries, pairs, english_style, splitter)
 
@@ -223,23 +233,7 @@ def _filter_entries(
 def _match(
     a_entries: list[_AEntry],
     b_entries: list[_BEntry],
-    corrector: DeviationCorrector,
-    k: int,
 ) -> list[tuple[_AEntry, _BEntry]]:
-    if corrector.match_kind == "sequential":
-        pairs: list[tuple[_AEntry, _BEntry]] = []
-        b_index = 0
-        for i in range(k):
-            while b_index < len(b_entries) and _is_annotation(b_entries[b_index]):
-                b_entries[b_index].notes.append(
-                    "annotation, excluded from pairing"
-                )
-                b_index += 1
-            if b_index >= len(b_entries):
-                break
-            pairs.append((a_entries[i], b_entries[b_index]))
-            b_index += 1
-        return pairs
     candidates: list[tuple[float, _AEntry, _BEntry]] = []
     for b_entry in b_entries:
         if _is_annotation(b_entry):
@@ -277,6 +271,82 @@ def _overlap_ratio(
     return overlap / max(b_end - b_start, 1e-6)
 
 
+def _correct_times(
+    b_entries: list[_BEntry], corrector: DeviationCorrector, params: CorrectionParams
+) -> None:
+    if params.pattern in ("discrete", "cumulative"):
+        return
+    times = corrector.correct_times(
+        [(entry.start, entry.end) for entry in b_entries], params
+    )
+    for entry, (start, end) in zip(b_entries, times, strict=True):
+        entry.start, entry.end = start, end
+
+
+def _overlap_count(
+    b_entries: list[_BEntry], a_entries: list[_AEntry]
+) -> int:
+    count = 0
+    for b_entry in b_entries:
+        if _is_annotation(b_entry):
+            continue
+        if any(
+            _overlap_ratio(b_entry.start, b_entry.end, a_entry.start, a_entry.end)
+            >= _OVERLAP_OK
+            for a_entry in a_entries
+        ):
+            count += 1
+    return count
+
+
+def _pair_by_text(
+    a_entries: list[_AEntry],
+    b_entries: list[_BEntry],
+    pairs: list[tuple[_AEntry, _BEntry]],
+    english_style: str,
+    report: _Report,
+) -> None:
+    paired_a = {a_entry.index for a_entry, _ in pairs}
+    paired_b = {id(b_entry) for _, b_entry in pairs}
+    golden_by_text: dict[str, list[_AEntry]] = {}
+    for a_entry in a_entries:
+        key = _normalize_text(a_entry.text)
+        if key:
+            golden_by_text.setdefault(key, []).append(a_entry)
+    for b_entry in b_entries:
+        if id(b_entry) in paired_b or _is_annotation(b_entry):
+            continue
+        eng = " ".join(
+            line.content
+            for line in b_entry.lines
+            if line.style == english_style and line.content
+        ).strip()
+        if not eng:
+            continue
+        key = _normalize_text(eng)
+        candidates = [
+            a_entry
+            for a_entry in golden_by_text.get(key, [])
+            if a_entry.index not in paired_a
+            and abs(a_entry.start - b_entry.start) <= _TEXT_MATCH_GAP
+        ]
+        if not candidates:
+            continue
+        best = min(
+            candidates, key=lambda a_entry: abs(a_entry.start - b_entry.start)
+        )
+        pairs.append((best, b_entry))
+        paired_a.add(best.index)
+        paired_b.add(id(b_entry))
+        report.record(
+            f"text-matched B#{b_entry.source.index} <- A#{best.index}"
+        )
+
+
+def _normalize_text(text: str) -> str:
+    return re.sub(r"[^0-9a-z\u4e00-\u9fff]+", "", text.lower())
+
+
 def _align_pairs(pairs: list[tuple[_AEntry, _BEntry]]) -> None:
     for a_entry, b_entry in pairs:
         b_entry.start = a_entry.start
@@ -287,24 +357,33 @@ def _handle_isolated(
     b_entries: list[_BEntry],
     pairs: list[tuple[_AEntry, _BEntry]],
     video_end: float,
+    english_style: str,
     report: _Report,
 ) -> None:
     paired = {id(b_entry) for _, b_entry in pairs}
-    paired_texts = [
+    paired_eng = [
         (
             " ".join(
-                line.content for line in b_entry.lines if line.content
+                line.content
+                for line in b_entry.lines
+                if line.style == english_style and line.content
             ).strip(),
             b_entry.start,
             b_entry.end,
         )
         for _, b_entry in pairs
     ]
+    extra_seen: dict[str, tuple[float, float]] = {}
     for b_entry in b_entries:
         if id(b_entry) in paired:
             continue
         content = " ".join(
             line.content for line in b_entry.lines if line.content
+        ).strip()
+        eng = " ".join(
+            line.content
+            for line in b_entry.lines
+            if line.style == english_style and line.content
         ).strip()
         if (b_entry.start > video_end or b_entry.end < 0) and _CREDIT_RE.search(
             content
@@ -314,14 +393,23 @@ def _handle_isolated(
                 f"#{b_entry.source.index}"
             )
             continue
-        if content and any(
-            text == content
+        if eng and any(
+            text == eng
             and _overlap_ratio(b_entry.start, b_entry.end, start, end) >= _OVERLAP_OK
-            for text, start, end in paired_texts
+            for text, start, end in paired_eng
         ):
             b_entry.action = "deleted"
             report.record(
                 f"duplicate of paired cue deleted: #{b_entry.source.index}"
+            )
+            continue
+        prior = extra_seen.get(eng)
+        if eng and prior and _overlap_ratio(
+            b_entry.start, b_entry.end, prior[0], prior[1]
+        ) >= _OVERLAP_OK:
+            b_entry.action = "deleted"
+            report.record(
+                f"duplicate of kept cue deleted: #{b_entry.source.index}"
             )
             continue
         b_entry.action = "kept_extra"
@@ -340,6 +428,7 @@ def _handle_isolated(
                 f"no golden match, original kept: "
                 f"#{b_entry.source.index} {content[:30]!r}"
             )
+        extra_seen[eng] = (b_entry.start, b_entry.end)
 
 
 def _fill_text(
