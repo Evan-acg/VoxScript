@@ -19,9 +19,13 @@ _LATIN_WRAP = 42
 _SCENE_GAP = 1.5
 _MAX_RETRIES = 3
 _BACKOFF_BASE = 2.0
-_RETRY_TIMEOUT = 60.0
+_RETRY_TIMEOUT = 180.0
 _MID_CONTEXT_SIZE = 3
 _SAMPLE_MIN_RATIO = 0.05
+_TOKEN_BUDGET_PER_CUE = 64
+_TOKEN_BUDGET_FACTOR = 1.6
+_TOKEN_BUDGET_MIN = 512
+_TOKEN_BUDGET_MAX = 4096
 _CJK_PUNCT = "、，。！？；"
 _CJK_LANGS = ("zh", "ja", "ko")
 _SYMBOL_RE = re.compile(r"^[\s.,!?;:·、，。！？…~\-—()\[\]{}「」『』""'']*$")
@@ -128,7 +132,9 @@ def translate_subtitle(
             report=report.render(),
         )
 
-    batches = _chunk(pending, config.max_lines_per_request)
+    batches = _chunk(
+        pending, config.max_lines_per_request, scene_gaps=config.sequential
+    )
     tokens = _TokenCount()
     if config.sequential:
         _run_sequential(
@@ -227,7 +233,10 @@ def _finalize_batch(
     on_log: Callable[[str], None] | None,
 ) -> None:
     tokens.add(outcome.prompt_tokens, outcome.completion_tokens)
-    report.batch(outcome.index, batch, outcome.status, outcome.elapsed)
+    report.batch(
+        outcome.index, batch, outcome.status, outcome.elapsed,
+        outcome.prompt_tokens, outcome.completion_tokens,
+    )
     if outcome.failed:
         _notify(
             on_log,
@@ -279,17 +288,20 @@ def _is_skippable(source: str) -> bool:
     return False
 
 
-def _chunk(cues: list[_Cue], max_lines: int) -> list[list[_Cue]]:
+def _chunk(
+    cues: list[_Cue], max_lines: int, scene_gaps: bool = True
+) -> list[list[_Cue]]:
     batches: list[list[_Cue]] = []
     cursor = 0
     while cursor < len(cues):
         end = min(cursor + max_lines, len(cues))
-        boundary = cursor
-        for i in range(cursor + 1, end):
-            if cues[i].start - cues[i - 1].end > _SCENE_GAP:
-                boundary = i
-        if boundary > cursor:
-            end = boundary
+        if scene_gaps:
+            boundary = cursor
+            for i in range(cursor + 1, end):
+                if cues[i].start - cues[i - 1].end > _SCENE_GAP:
+                    boundary = i
+            if boundary > cursor:
+                end = boundary
         batches.append(cues[cursor:end])
         cursor = end
     return batches
@@ -308,8 +320,9 @@ def _translate_batch(
     start = time.perf_counter()
     texts = [cue.source for cue in batch]
     prompt = _build_prompt(config, texts, prev_tail, parallel)
+    max_tokens = _completion_budget(batch)
     content, error, prompt_tokens, completion_tokens = _call_with_retry(
-        provider, config, prompt
+        provider, config, prompt, max_tokens
     )
     if content is None:
         for cue in batch:
@@ -367,6 +380,11 @@ def _build_prompt(
         "2. 达：译文通顺流畅，完全符合目标语言的口语表达习惯。",
         "3. 雅：译文优雅得体，但不过分书面化，保持原句的口语风格与情绪色彩。",
         "",
+        "输出规则（必须严格遵守）：",
+        "- 行数与输入句数严格一致，一行对应一句，按输入顺序输出。",
+        "- 只输出译文本身；禁止序号、编号、标题、注释、解释、空行、原文重复、JSON 或任何额外内容。",
+        "- 若某句确实无法翻译，也必须输出一行，内容为该句原文。",
+        "",
         "风格要求：",
         '- 译文必须接地气，像真实人物在说话，避免"翻译腔"（如避免生硬的直译，避免滥用"哦"、"啊"、"的"等助词）。',
         "- 贴合原句的语域（正式/非正式、幽默/严肃、愤怒/温柔），并在译文中体现。",
@@ -410,10 +428,20 @@ def _build_prompt(
     ]
 
 
+def _completion_budget(batch: list[_Cue]) -> int:
+    chars = sum(len(cue.source) for cue in batch)
+    budget = max(
+        int(chars * _TOKEN_BUDGET_FACTOR),
+        len(batch) * _TOKEN_BUDGET_PER_CUE,
+    )
+    return min(max(budget, _TOKEN_BUDGET_MIN), _TOKEN_BUDGET_MAX)
+
+
 def _call_with_retry(
     provider: LLMProvider,
     config: LLMConfig,
     prompt: list[dict[str, str]],
+    max_tokens: int,
 ) -> tuple[str | None, str | None, int, int]:
     last_error: str | None = None
     prompt_tokens = 0
@@ -421,7 +449,7 @@ def _call_with_retry(
     for attempt in range(1, _MAX_RETRIES + 1):
         try:
             result = provider.chat(
-                prompt, config.model, config.temperature, _RETRY_TIMEOUT
+                prompt, config.model, config.temperature, _RETRY_TIMEOUT, max_tokens
             )
             prompt_tokens += result.prompt_tokens
             completion_tokens += result.completion_tokens
@@ -676,13 +704,21 @@ class _Report:
         )
 
     def batch(
-        self, index: int, batch: list[_Cue], status: str, elapsed: float
+        self,
+        index: int,
+        batch: list[_Cue],
+        status: str,
+        elapsed: float,
+        prompt_tokens: int,
+        completion_tokens: int,
     ) -> None:
         first = batch[0].dialogue_index
         last = batch[-1].dialogue_index
         self._append(
             self._batches,
-            f"  batch {index}: cues #{first}..#{last}, {status}, {elapsed:.1f}s",
+            f"  batch {index}: cues #{first}..#{last}, {status}, "
+            f"{elapsed:.1f}s, prompt {prompt_tokens}, "
+            f"completion {completion_tokens}",
         )
 
     def length(self, index: int, source_len: int, target_len: int, detail: str) -> None:

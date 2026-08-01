@@ -30,12 +30,15 @@ class OpenAIProvider(LLMProvider):
         model: str,
         temperature: float,
         timeout: float,
+        max_tokens: int | None = None,
     ) -> ChatResult:
-        payload = {
+        payload: dict[str, object] = {
             "model": model,
             "messages": messages,
             "temperature": temperature,
         }
+        if max_tokens is not None:
+            payload["max_tokens"] = max_tokens
         try:
             response = self._session.post(
                 self._api_endpoint,

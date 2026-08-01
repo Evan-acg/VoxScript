@@ -22,5 +22,6 @@ class LLMProvider(ABC):
         model: str,
         temperature: float,
         timeout: float,
+        max_tokens: int | None = None,
     ) -> ChatResult:
         """Send a chat completion request and return the assistant text plus token usage."""
