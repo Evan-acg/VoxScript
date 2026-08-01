@@ -13,6 +13,7 @@ MERGE_THRESHOLD = 1.0
 MERGE_MAX = 3.0
 ROUND = 3
 _EPSILON = 1e-9
+_DUP_WINDOW = 1.5
 
 
 @dataclass(frozen=True)
@@ -67,7 +68,32 @@ def split_transcript(
                 index += 1
     if on_log is not None:
         on_log(f"split into {len(output)} cues")
+    output = _dedup_clusters(output)
+    if on_log is not None:
+        on_log(f"deduplicated whisper repeat clusters: {len(output)} cues")
     return normalized.model_copy(update={"dialogue": output})
+
+
+def _dedup_clusters(output: list[NormalizedDialogue]) -> list[NormalizedDialogue]:
+    seen: dict[str, float] = {}
+    kept: list[NormalizedDialogue] = []
+    for dialogue in output:
+        text = _dialogue_text(dialogue)
+        if not text:
+            kept.append(dialogue)
+            continue
+        last = seen.get(text)
+        if last is not None and abs(dialogue.start - last) <= _DUP_WINDOW:
+            continue
+        seen[text] = dialogue.start
+        kept.append(dialogue)
+    return kept
+
+
+def _dialogue_text(dialogue: NormalizedDialogue) -> str:
+    return " ".join(
+        line.content for line in dialogue.lines if line.content
+    ).strip()
 
 
 def _split_dialogue(dialogue: NormalizedDialogue, splitter: SentenceSplitter) -> list[str]:

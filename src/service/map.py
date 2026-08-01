@@ -316,7 +316,7 @@ def _handle_isolated(
             continue
         if content and any(
             text == content
-            and _overlap_ratio(b_entry.start, b_entry.end, start, end) >= 0.8
+            and _overlap_ratio(b_entry.start, b_entry.end, start, end) >= _OVERLAP_OK
             for text, start, end in paired_texts
         ):
             b_entry.action = "deleted"

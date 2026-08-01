@@ -4,8 +4,8 @@ import math
 from pathlib import Path
 from typing import Callable
 
-import whisperx
-from huggingface_hub.errors import LocalEntryNotFoundError
+from faster_whisper import WhisperModel
+from whisperx import load_audio
 
 _SAMPLE_RATE = 16000
 _CHUNK_SIZE = 30.0
@@ -16,18 +16,24 @@ def load_model(
     model_name: str,
     on_log: Callable[[str], None] | None = None,
 ):
-    kwargs = dict(
-        device="cpu",
-        compute_type="int8",
-        download_root=str(model_dir),
-        vad_method="silero",
-    )
     try:
-        return whisperx.load_model(model_name, local_files_only=True, **kwargs)
-    except LocalEntryNotFoundError:
+        return WhisperModel(
+            model_name,
+            device="cpu",
+            compute_type="int8",
+            download_root=str(model_dir),
+            local_files_only=True,
+        )
+    except (ValueError, OSError, RuntimeError):
         if on_log is not None:
-            on_log("whisperx model not in local cache, downloading ...")
-        return _download_model(model_name, kwargs)
+            on_log("whisper model not in local cache, downloading ...")
+        return WhisperModel(
+            model_name,
+            device="cpu",
+            compute_type="int8",
+            download_root=str(model_dir),
+            local_files_only=False,
+        )
 
 
 def transcribe(
@@ -36,7 +42,7 @@ def transcribe(
     language: str | None = None,
     on_progress: Callable[[float], None] | None = None,
 ) -> list[dict]:
-    audio = whisperx.load_audio(str(audio_path))
+    audio = load_audio(str(audio_path))
     return _transcribe_chunks(model, audio, language, on_progress)
 
 
@@ -70,16 +76,6 @@ def format_timestamp(seconds: float) -> str:
     return f"{hours:02d}:{minutes:02d}:{secs:02d},{millis:03d}"
 
 
-def _download_model(model_name: str, kwargs: dict):
-    try:
-        return whisperx.load_model(model_name, local_files_only=False, **kwargs)
-    except Exception as exc:
-        raise RuntimeError(
-            f"failed to download whisperx model: {exc}; if the network is slow, "
-            "set HF_ENDPOINT=https://hf-mirror.com in midterm.bat and retry"
-        ) from exc
-
-
 def _transcribe_chunks(
     model,
     audio,
@@ -104,18 +100,30 @@ def _transcribe_chunks(
             continue
 
         chunk_language = language or detected_language
-        result = model.transcribe(
+        segments, info = model.transcribe(
             slice_audio,
             language=chunk_language,
-            print_progress=False,
+            word_timestamps=True,
+            vad_filter=True,
+            beam_size=5,
         )
-        if detected_language is None and result.get("language"):
-            detected_language = result["language"]
+        if detected_language is None and info.language:
+            detected_language = info.language
 
-        for segment in result.get("segments", []):
-            segment["start"] = round(float(segment["start"]) + start, 3)
-            segment["end"] = round(float(segment["end"]) + start, 3)
-            all_segments.append(segment)
+        for segment in segments:
+            seg_start = float(segment.start)
+            seg_end = float(segment.end)
+            words = list(segment.words or [])
+            if words:
+                seg_start = float(words[0].start)
+                seg_end = float(words[-1].end)
+            all_segments.append(
+                {
+                    "start": round(seg_start + start, 3),
+                    "end": round(seg_end + start, 3),
+                    "text": str(segment.text).strip(),
+                }
+            )
 
         if on_progress is not None:
             on_progress((index + 1) / chunk_count * 100)
