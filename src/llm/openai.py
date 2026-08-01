@@ -19,7 +19,10 @@ class OpenAIProvider(LLMProvider):
 
     def __init__(self, api_endpoint: str, api_key: str) -> None:
         self._api_endpoint = _normalize_endpoint(api_endpoint)
-        self._api_key = api_key
+        self._session = requests.Session()
+        self._session.headers.update({"Content-Type": "application/json"})
+        if api_key:
+            self._session.headers["Authorization"] = f"Bearer {api_key}"
 
     def chat(
         self,
@@ -28,19 +31,15 @@ class OpenAIProvider(LLMProvider):
         temperature: float,
         timeout: float,
     ) -> ChatResult:
-        headers = {"Content-Type": "application/json"}
-        if self._api_key:
-            headers["Authorization"] = f"Bearer {self._api_key}"
         payload = {
             "model": model,
             "messages": messages,
             "temperature": temperature,
         }
         try:
-            response = requests.post(
+            response = self._session.post(
                 self._api_endpoint,
                 json=payload,
-                headers=headers,
                 timeout=timeout,
             )
         except requests.RequestException as exc:

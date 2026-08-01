@@ -18,6 +18,8 @@ class LLMConfig(BaseModel):
     term_base: dict[str, str] = {}
     max_lines_per_request: int = 30
     temperature: float = 0.3
+    concurrency: int = 4
+    sequential: bool = False
     summary: str = ""
     characters: str = ""
     relationships: str = ""
@@ -49,4 +51,11 @@ class LLMConfig(BaseModel):
     def _validate_temperature(cls, value: float) -> float:
         if not 0.0 <= value <= 1.0:
             raise ValueError("temperature must be between 0.0 and 1.0")
+        return value
+
+    @field_validator("concurrency")
+    @classmethod
+    def _validate_concurrency(cls, value: int) -> int:
+        if not 1 <= value <= 16:
+            raise ValueError("concurrency must be between 1 and 16")
         return value

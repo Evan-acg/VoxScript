@@ -42,7 +42,8 @@ console = Console()
     "output_path",
     type=click.Path(dir_okay=False, path_type=Path),
     default=None,
-    help="Output ASS file; defaults to <input>.ass.",
+    help="Output ASS file (must end with .ass) or a directory (named "
+    "after the input); defaults to <input>.ass.",
 )
 @click.option(
     "--force-check",
@@ -144,6 +145,19 @@ console = Console()
     default=None,
     help="Text file describing relationships between characters.",
 )
+@click.option(
+    "--llm-concurrency",
+    type=int,
+    default=None,
+    help="Number of parallel translation requests (default: 4).",
+)
+@click.option(
+    "--sequential",
+    is_flag=True,
+    default=False,
+    help="Translate batches strictly in order (previous translations "
+    "used as context) instead of in parallel.",
+)
 def cli(
     input_path: Path,
     subtitle_paths: tuple[str, ...],
@@ -164,6 +178,8 @@ def cli(
     summary: Path | None,
     characters: Path | None,
     relationships: Path | None,
+    llm_concurrency: int | None,
+    sequential: bool,
 ) -> None:
     """VoxScript CLI."""
     config = AppConfig.load()
@@ -183,6 +199,8 @@ def cli(
         summary,
         characters,
         relationships,
+        llm_concurrency,
+        sequential,
     )
     try:
         args = ProofArgs(
@@ -291,6 +309,8 @@ def _build_llm_config(
     summary_path: Path | None,
     characters_path: Path | None,
     relationships_path: Path | None,
+    llm_concurrency: int | None,
+    sequential: bool,
 ) -> LLMConfig | None:
     if not translate:
         return None
@@ -332,6 +352,12 @@ def _build_llm_config(
         ),
         target_style=base.target_style,
         alias_groups=base.alias_groups,
+        concurrency=(
+            llm_concurrency
+            if llm_concurrency is not None
+            else base.concurrency
+        ),
+        sequential=sequential or base.sequential,
     )
     if not merged.model or not merged.api_endpoint:
         raise click.ClickException(

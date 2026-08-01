@@ -3,14 +3,16 @@ from __future__ import annotations
 import math
 import random
 import re
+import threading
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable
 
 from src.entity.subtitle import DialogueLine, NormalizedSubtitle
 from src.entity.translate import LLMConfig
-from src.llm.base import ChatResult, LLMProvider
+from src.llm.base import LLMProvider
 
 _CJK_WRAP = 22
 _LATIN_WRAP = 42
@@ -51,15 +53,25 @@ class _Cue:
     parts: list[str] = field(default_factory=list)
 
 
+@dataclass(frozen=True)
+class _BatchOutcome:
+    index: int
+    status: str
+    elapsed: float
+    prompt_tokens: int
+    completion_tokens: int
+    failed: bool = False
+
+
 class _TokenCount:
     def __init__(self) -> None:
         self.prompt = 0
         self.completion = 0
         self.requests = 0
 
-    def add(self, result: ChatResult) -> None:
-        self.prompt += result.prompt_tokens
-        self.completion += result.completion_tokens
+    def add(self, prompt: int, completion: int) -> None:
+        self.prompt += prompt
+        self.completion += completion
         self.requests += 1
 
 
@@ -118,24 +130,16 @@ def translate_subtitle(
 
     batches = _chunk(pending, config.max_lines_per_request)
     tokens = _TokenCount()
-    prev_tail: list[tuple[str, str]] = []
-    done = 0
-    for index, batch in enumerate(batches, start=1):
-        _translate_batch(
-            batch,
-            index,
-            config,
-            provider,
-            cjk,
-            prev_tail,
-            tokens,
-            report,
-            on_log,
+    if config.sequential:
+        _run_sequential(
+            batches, config, provider, cjk, tokens, report, on_log,
+            on_progress, len(pending),
         )
-        prev_tail = _cue_tail(batch)
-        done += len(batch)
-        if on_progress is not None:
-            on_progress(done / len(pending) * 100)
+    else:
+        _run_parallel(
+            batches, config, provider, cjk, tokens, report, on_log,
+            on_progress, len(pending),
+        )
 
     _unify_aliases(cues, config.alias_groups, config.term_base, report)
     report.summary(cues, tokens)
@@ -145,6 +149,90 @@ def translate_subtitle(
         translated=_build_output(normalized, cues, config.target_style),
         report=report.render(),
     )
+
+
+def _run_sequential(
+    batches: list[list[_Cue]],
+    config: LLMConfig,
+    provider: LLMProvider,
+    cjk: bool,
+    tokens: _TokenCount,
+    report: _Report,
+    on_log: Callable[[str], None] | None,
+    on_progress: Callable[[float], None] | None,
+    pending_count: int,
+) -> None:
+    prev_tail: list[tuple[str, str]] = []
+    done = 0
+    total_elapsed = 0.0
+    for index, batch in enumerate(batches, start=1):
+        outcome = _translate_batch(
+            batch, index, config, provider, cjk, prev_tail, False, report
+        )
+        prev_tail = _cue_tail(batch)
+        _finalize_batch(outcome, batch, tokens, report, on_log)
+        total_elapsed += outcome.elapsed
+        done += len(batch)
+        if on_progress is not None:
+            on_progress(done / pending_count * 100)
+    report.api_time(total_elapsed)
+
+
+def _run_parallel(
+    batches: list[list[_Cue]],
+    config: LLMConfig,
+    provider: LLMProvider,
+    cjk: bool,
+    tokens: _TokenCount,
+    report: _Report,
+    on_log: Callable[[str], None] | None,
+    on_progress: Callable[[float], None] | None,
+    pending_count: int,
+) -> None:
+    outcomes: list[_BatchOutcome] = []
+    done = 0
+    with ThreadPoolExecutor(max_workers=config.concurrency) as pool:
+        future_to_index = {
+            pool.submit(
+                _translate_batch,
+                batch,
+                index,
+                config,
+                provider,
+                cjk,
+                _source_tail(batches, index - 1),
+                True,
+                report,
+            ): index
+            for index, batch in enumerate(batches, start=1)
+        }
+        for future in as_completed(future_to_index):
+            outcome = future.result()
+            outcomes.append(outcome)
+            done += len(batches[outcome.index - 1])
+            if on_progress is not None:
+                on_progress(done / pending_count * 100)
+    total_elapsed = 0.0
+    for outcome in sorted(outcomes, key=lambda item: item.index):
+        _finalize_batch(outcome, batches[outcome.index - 1], tokens, report, on_log)
+        total_elapsed += outcome.elapsed
+    report.api_time(total_elapsed)
+
+
+def _finalize_batch(
+    outcome: _BatchOutcome,
+    batch: list[_Cue],
+    tokens: _TokenCount,
+    report: _Report,
+    on_log: Callable[[str], None] | None,
+) -> None:
+    tokens.add(outcome.prompt_tokens, outcome.completion_tokens)
+    report.batch(outcome.index, batch, outcome.status, outcome.elapsed)
+    if outcome.failed:
+        _notify(
+            on_log,
+            f"batch {outcome.index}: all retries failed, keeping old translations",
+        )
 
 
 def _extract_cues(
@@ -214,19 +302,26 @@ def _translate_batch(
     provider: LLMProvider,
     cjk: bool,
     prev_tail: list[tuple[str, str]],
-    tokens: _TokenCount,
+    parallel: bool,
     report: _Report,
-    on_log: Callable[[str], None] | None,
-) -> None:
+) -> _BatchOutcome:
+    start = time.perf_counter()
     texts = [cue.source for cue in batch]
-    prompt = _build_prompt(config, texts, prev_tail)
-    content, error = _call_with_retry(provider, config, prompt, tokens)
+    prompt = _build_prompt(config, texts, prev_tail, parallel)
+    content, error, prompt_tokens, completion_tokens = _call_with_retry(
+        provider, config, prompt
+    )
     if content is None:
         for cue in batch:
             cue.action = "failed"
-        report.batch(index, batch, f"FAILED ({error})")
-        _notify(on_log, f"batch {index}: all retries failed, keeping old translations")
-        return
+        return _BatchOutcome(
+            index=index,
+            status=f"FAILED ({error})",
+            elapsed=time.perf_counter() - start,
+            prompt_tokens=prompt_tokens,
+            completion_tokens=completion_tokens,
+            failed=True,
+        )
 
     lines = _split_response(content)
     count = len(batch)
@@ -240,19 +335,29 @@ def _translate_batch(
         lines += [""] * missing
         status = f"PADDED (missing {missing})"
     elif len(lines) > count:
+        extra = len(lines) - count
         report.warning(
             f"batch {index}: response had {len(lines)} lines for {count} cues; "
             "extra lines truncated"
         )
         lines = lines[:count]
-        status = f"TRUNCATED (extra {len(lines) - count})"
+        status = f"TRUNCATED (extra {extra})"
     for cue, line in zip(batch, lines, strict=True):
         _post_process(cue, line, config, cjk, report)
-    report.batch(index, batch, status)
+    return _BatchOutcome(
+        index=index,
+        status=status,
+        elapsed=time.perf_counter() - start,
+        prompt_tokens=prompt_tokens,
+        completion_tokens=completion_tokens,
+    )
 
 
 def _build_prompt(
-    config: LLMConfig, texts: list[str], prev_tail: list[tuple[str, str]]
+    config: LLMConfig,
+    texts: list[str],
+    prev_tail: list[tuple[str, str]],
+    parallel: bool,
 ) -> list[dict[str, str]]:
     system_parts = [
         f"你是一位专业的影视字幕翻译员，精通 {config.source_lang} 与 {config.target_lang}。",
@@ -283,10 +388,17 @@ def _build_prompt(
 
     user_parts: list[str] = []
     if prev_tail:
-        user_parts.append("以下是前文最后几句（已翻译，仅供参考，不需重译），用于保持连贯：")
-        for source, target in prev_tail:
-            user_parts.append(f"源文: {source}")
-            user_parts.append(f"译文: {target}")
+        if parallel:
+            user_parts.append("以下是前文内容（仅供连贯参考，不需重译）：")
+            for source, _ in prev_tail:
+                user_parts.append(f"源文: {source}")
+        else:
+            user_parts.append(
+                "以下是前文最后几句（已翻译，仅供参考，不需重译），用于保持连贯："
+            )
+            for source, target in prev_tail:
+                user_parts.append(f"源文: {source}")
+                user_parts.append(f"译文: {target}")
         user_parts.append("")
     user_parts.append(f"请将以下 {config.source_lang} 句子逐句翻译为 {config.target_lang}。")
     user_parts.append("每行一个句子，按顺序输出译文，不要添加任何序号、注释或额外说明。")
@@ -302,24 +414,26 @@ def _call_with_retry(
     provider: LLMProvider,
     config: LLMConfig,
     prompt: list[dict[str, str]],
-    tokens: _TokenCount,
-) -> tuple[str | None, str | None]:
+) -> tuple[str | None, str | None, int, int]:
     last_error: str | None = None
+    prompt_tokens = 0
+    completion_tokens = 0
     for attempt in range(1, _MAX_RETRIES + 1):
         try:
             result = provider.chat(
                 prompt, config.model, config.temperature, _RETRY_TIMEOUT
             )
-            tokens.add(result)
+            prompt_tokens += result.prompt_tokens
+            completion_tokens += result.completion_tokens
             content = result.content.strip()
             if not content:
                 raise RuntimeError("empty LLM response")
-            return content, None
+            return content, None, prompt_tokens, completion_tokens
         except RuntimeError as exc:
             last_error = str(exc)
             if attempt < _MAX_RETRIES:
                 time.sleep(_BACKOFF_BASE * attempt)
-    return None, last_error
+    return None, last_error, prompt_tokens, completion_tokens
 
 
 def _split_response(content: str) -> list[str]:
@@ -489,6 +603,15 @@ def _cue_tail(batch: list[_Cue]) -> list[tuple[str, str]]:
     return tail[-_MID_CONTEXT_SIZE:]
 
 
+def _source_tail(batches: list[list[_Cue]], index: int) -> list[tuple[str, str]]:
+    if index <= 0:
+        return []
+    return [
+        (cue.source, "")
+        for cue in batches[index - 1][-_MID_CONTEXT_SIZE:]
+    ]
+
+
 def _is_cjk(target_lang: str) -> bool:
     return target_lang.lower().split("-")[0] in _CJK_LANGS
 
@@ -530,6 +653,7 @@ def _notify(on_log: Callable[[str], None] | None, message: str) -> None:
 
 class _Report:
     def __init__(self) -> None:
+        self._lock = threading.Lock()
         self._header: list[str] = []
         self._batches: list[str] = []
         self._lengths: list[str] = []
@@ -539,63 +663,86 @@ class _Report:
         self._summary: list[str] = []
         self._sample: list[str] = []
 
+    def _append(self, section: list[str], line: str) -> None:
+        with self._lock:
+            section.append(line)
+
     def header(self, path: Path) -> None:
-        self._header.append(f"Translation report: {path}")
+        self._append(self._header, f"Translation report: {path}")
 
     def inputs(self, total: int, pending: int) -> None:
-        self._header.append(f"Input: {total} cues ({pending} to translate)")
+        self._append(
+            self._header, f"Input: {total} cues ({pending} to translate)"
+        )
 
-    def batch(self, index: int, batch: list[_Cue], status: str) -> None:
+    def batch(
+        self, index: int, batch: list[_Cue], status: str, elapsed: float
+    ) -> None:
         first = batch[0].dialogue_index
         last = batch[-1].dialogue_index
-        self._batches.append(
-            f"  batch {index}: cues #{first}..#{last}, {status}"
+        self._append(
+            self._batches,
+            f"  batch {index}: cues #{first}..#{last}, {status}, {elapsed:.1f}s",
         )
 
     def length(self, index: int, source_len: int, target_len: int, detail: str) -> None:
-        self._lengths.append(
+        self._append(
+            self._lengths,
             f"  cue #{index}: source {source_len} chars, "
-            f"translation {target_len} chars, {detail}"
+            f"translation {target_len} chars, {detail}",
         )
 
     def term(self, index: int, source: str, target: str) -> None:
-        self._terms.append(f"  cue #{index}: '{source}' -> '{target}' (term base)")
+        self._append(
+            self._terms, f"  cue #{index}: '{source}' -> '{target}' (term base)"
+        )
 
     def alias(self, index: int, before: str, after: str, reason: str) -> None:
-        self._aliases.append(
-            f"  cue #{index}: '{before}' -> '{after}' ({reason})"
+        self._append(
+            self._aliases,
+            f"  cue #{index}: '{before}' -> '{after}' ({reason})",
         )
 
     def warning(self, message: str) -> None:
-        self._warnings.append(f"  ! WARNING: {message}")
+        self._append(self._warnings, f"  ! WARNING: {message}")
 
     def record(self, message: str) -> None:
-        self._warnings.append(f"  - {message}")
+        self._append(self._warnings, f"  - {message}")
 
     def summary(self, cues: list[_Cue], tokens: _TokenCount) -> None:
         translated = sum(1 for cue in cues if cue.action == "translated")
         skipped = sum(1 for cue in cues if cue.skip)
         failed = sum(1 for cue in cues if cue.action == "failed")
         kept = len(cues) - translated - skipped - failed
-        self._summary.append(
+        self._append(
+            self._summary,
             f"Summary: {len(cues)} cues, translated {translated}, "
-            f"skipped {skipped}, failed {failed}, kept old {kept}"
+            f"skipped {skipped}, failed {failed}, kept old {kept}",
         )
 
     def tokens(self, tokens: _TokenCount) -> None:
-        self._summary.append(
+        self._append(
+            self._summary,
             f"Tokens: {tokens.requests} requests, "
-            f"prompt {tokens.prompt}, completion {tokens.completion}"
+            f"prompt {tokens.prompt}, completion {tokens.completion}",
+        )
+
+    def api_time(self, total_elapsed: float) -> None:
+        self._append(
+            self._summary, f"API time: {total_elapsed:.1f}s"
         )
 
     def sample(self, chosen: list[_Cue]) -> None:
-        self._sample.append(
-            f"Sample review ({len(chosen)} of translated cues):"
+        self._append(
+            self._sample,
+            f"Sample review ({len(chosen)} of translated cues):",
         )
         for cue in chosen:
-            self._sample.append(f"  cue #{cue.dialogue_index}")
-            self._sample.append(f"    source: {cue.source}")
-            self._sample.append(f"    translation: {' '.join(cue.parts)}")
+            self._append(self._sample, f"  cue #{cue.dialogue_index}")
+            self._append(self._sample, f"    source: {cue.source}")
+            self._append(
+                self._sample, f"    translation: {' '.join(cue.parts)}"
+            )
 
     def render(self) -> str:
         sections = [
