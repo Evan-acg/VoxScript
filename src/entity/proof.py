@@ -12,6 +12,7 @@ class ProofArgs(BaseModel):
     input_path: Path
     subtitle_paths: list[Path]
     output_path: Path | None = None
+    output_is_dir: bool = False
     model_dir: Path
     api_key: str | None = None
     api_key_env: str | None = None
@@ -45,6 +46,9 @@ class ProofArgs(BaseModel):
     def _resolve_output(self) -> ProofArgs:
         output = self.output_path or self.input_path.with_suffix(".ass")
         if output.is_dir():
+            output = output / f"{self.input_path.stem}.Repaired.ass"
+        elif self.output_is_dir:
+            output.mkdir(parents=True, exist_ok=True)
             output = output / f"{self.input_path.stem}.ass"
         else:
             if output.suffix.lower() != ".ass":

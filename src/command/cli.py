@@ -40,10 +40,11 @@ console = Console()
     "-o",
     "--output",
     "output_path",
-    type=click.Path(dir_okay=False, path_type=Path),
+    type=str,
     default=None,
-    help="Output ASS file (must end with .ass) or a directory (named "
-    "after the input); defaults to <input>.ass.",
+    help="Output ASS file (must end with .ass), or a directory with a "
+    "trailing slash (created if missing) named after the input; "
+    "defaults to <input>.ass.",
 )
 @click.option(
     "--force-check",
@@ -203,10 +204,14 @@ def cli(
         sequential,
     )
     try:
+        output_is_dir = bool(
+            output_path and output_path.rstrip().endswith(("/", "\\"))
+        )
         args = ProofArgs(
             input_path=input_path,
             subtitle_paths=list(subtitle_paths),
-            output_path=output_path,
+            output_path=Path(output_path) if output_path else None,
+            output_is_dir=output_is_dir,
             model_dir=config.model_dir,
             api_key=llm_config.api_key if llm_config is not None else None,
             api_key_env=(
