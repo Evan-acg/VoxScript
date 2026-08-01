@@ -59,26 +59,29 @@ class AsrHandler:
         return self.context
 
     def _load_model(self):
-        common = dict(
+        kwargs = dict(
             device="cpu",
             compute_type="int8",
             download_root=str(self.model_dir),
             vad_method="silero",
         )
         try:
-            return whisperx.load_model(self.model_name, local_files_only=True, **common)
+            return whisperx.load_model(self.model_name, local_files_only=True, **kwargs)
         except LocalEntryNotFoundError:
             self.bus.log(
                 "whisperx model not in local cache, downloading ...",
                 level="WARNING",
             )
-            try:
-                return whisperx.load_model(self.model_name, local_files_only=False, **common)
-            except Exception as exc:
-                raise click.ClickException(
-                    "failed to download whisperx model; if the network is slow, "
-                    "set HF_ENDPOINT=https://hf-mirror.com in midterm.bat and retry"
-                ) from exc
+            return self._download_model(kwargs)
+
+    def _download_model(self, kwargs):
+        try:
+            return whisperx.load_model(self.model_name, local_files_only=False, **kwargs)
+        except Exception as exc:
+            raise click.ClickException(
+                f"failed to download whisperx model: {exc}; if the network is slow, "
+                "set HF_ENDPOINT=https://hf-mirror.com in midterm.bat and retry"
+            ) from exc
 
     def _transcribe_chunks(self, model, audio) -> list[dict]:
         duration = len(audio) / _SAMPLE_RATE
