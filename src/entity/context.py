@@ -17,6 +17,8 @@ class PipelineContext(BaseModel):
     transcript_path: Path | None = None
     transcript_normalized_path: Path | None = None
     split_json_path: Path | None = None
+    mapped_paths: list[Path] = []
+    mapping_report_paths: list[Path] = []
     normalized_paths: list[Path] = []
     user_subtitles: list[ParsedSubtitle] = []
     transcript_segments: list[SubtitleSegment] = []

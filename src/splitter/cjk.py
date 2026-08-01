@@ -30,6 +30,7 @@ _CLAUSE_PATTERNS = tuple(re.compile(re.escape(word)) for word in _CLAUSE_WORDS)
 
 
 class CjkSplitter(SentenceSplitter):
+    family = "cjk"
     max_chars = 30
 
     def split(self, text: str) -> list[str]:

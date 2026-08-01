@@ -44,6 +44,7 @@ def _compile_pattern(
 
 
 class SpaceSeparatedSplitter(SentenceSplitter):
+    family = "space"
     max_chars = 80
 
     def __init__(

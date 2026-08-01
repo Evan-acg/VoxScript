@@ -13,6 +13,7 @@ class AppConfig(BaseModel):
     model_dir: Path
     model_name: str = "small"
     work_dir: Path | None = None
+    english_style: str = "Eng"
 
     @classmethod
     def load(cls, path: Path = DEFAULT_CONFIG_PATH) -> AppConfig:

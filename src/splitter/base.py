@@ -4,6 +4,7 @@ from abc import ABC, abstractmethod
 
 
 class SentenceSplitter(ABC):
+    family: str
     max_chars: int
 
     @abstractmethod
