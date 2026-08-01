@@ -12,6 +12,7 @@ from src.entity.context import PipelineContext
 from src.entity.proof import ProofArgs
 from src.entity.translate import LLMConfig
 from src.handler.asr import AsrHandler
+from src.handler.ass_export import AssExportHandler
 from src.handler.audio import AudioHandler
 from src.handler.map import MapHandler
 from src.handler.split import SplitHandler
@@ -120,6 +121,9 @@ def build_pipeline(
             source_style=config.english_style,
         ).translate()
 
+    def export_ass() -> None:
+        AssExportHandler(args, context, bus).export()
+
     pipeline = (
         Pipeline(bus, context)
         .add("preflight", preflight)
@@ -132,4 +136,4 @@ def build_pipeline(
     )
     if llm_config is not None:
         pipeline.add("translate_subtitles", translate_subtitles)
-    return pipeline
+    return pipeline.add("export_ass", export_ass)

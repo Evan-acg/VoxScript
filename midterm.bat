@@ -7,6 +7,7 @@ rem --- Configurable paths ---
 set "INPUT=E:\S01_E01_Pilot.mp4"
 set "SUBTITLE=E:\S01_E01_Pilot.ass"
 set "LANGUAGE=en"
+set "OUTPUT=E:\\"
 
 rem --- Hugging Face mirror (used when model needs downloading) ---
 set "HF_ENDPOINT=https://hf-mirror.com"
@@ -29,7 +30,7 @@ where uv >nul 2>&1 || (
 
 rem --- Run ---
 echo Running VoxScript...
-uv run starter.py -i "%INPUT%" -s "%SUBTITLE%" -l "%LANGUAGE%" -t
+uv run starter.py -i "%INPUT%" -s "%SUBTITLE%" -l "%LANGUAGE%" -t -o "%OUTPUT%"
 set "EXIT_CODE=%errorlevel%"
 if not "%EXIT_CODE%"=="0" (
     echo [ERROR] VoxScript exited with code %EXIT_CODE%.

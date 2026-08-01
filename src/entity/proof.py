@@ -43,7 +43,20 @@ class ProofArgs(BaseModel):
 
     @model_validator(mode="after")
     def _resolve_output(self) -> ProofArgs:
-        self.output_path = self.output_path or self.input_path.with_suffix(".ass")
+        output = self.output_path or self.input_path.with_suffix(".ass")
+        if output.is_dir():
+            output = output / f"{self.input_path.stem}.ass"
+        else:
+            if output.suffix.lower() != ".ass":
+                raise ValueError(f"output path must end with .ass: {output}")
+            parent = output.parent
+            if not parent.exists() or not parent.is_dir():
+                raise ValueError(f"output directory does not exist: {parent}")
+        if output.is_dir():
+            raise ValueError(f"output path is a directory: {output}")
+        if output == self.input_path:
+            raise ValueError("output path must differ from the input file")
+        self.output_path = output
         return self
 
     @model_validator(mode="after")
