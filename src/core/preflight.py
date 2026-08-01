@@ -79,20 +79,20 @@ def run_preflight(config: AppConfig) -> list[PreflightResult]:
         )
     else:
         repo_id = f"Systran/faster-whisper-{config.model_name}"
-        resolved = try_to_load_from_cache(
-            repo_id,
-            "model.bin",
-            cache_dir=str(config.model_dir),
-        )
-        ok = resolved is not None and resolved is not _CACHED_NO_EXIST
+        missing = [
+            filename
+            for filename in ("config.json", "model.bin", "tokenizer.json", "vocabulary.txt")
+            if try_to_load_from_cache(repo_id, filename, cache_dir=str(config.model_dir))
+            in (None, _CACHED_NO_EXIST)
+        ]
         results.append(
             PreflightResult(
                 name="whisperx model",
-                ok=ok,
+                ok=not missing,
                 detail=(
-                    f"{repo_id} resolved in cache"
-                    if ok
-                    else f"{repo_id} not found in {config.model_dir}"
+                    f"{repo_id} cached in {config.model_dir}"
+                    if not missing
+                    else f"{repo_id} missing in {config.model_dir}: {', '.join(missing)}"
                 ),
             )
         )

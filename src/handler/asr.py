@@ -2,9 +2,12 @@ from __future__ import annotations
 
 import math
 import tempfile
+import time
 from pathlib import Path
 
+import click
 import whisperx
+from huggingface_hub.errors import LocalEntryNotFoundError
 
 from src.core.events import EventBus
 from src.entity.context import PipelineContext
@@ -21,12 +24,14 @@ class AsrHandler:
         context: PipelineContext,
         bus: EventBus,
         model_dir: Path,
+        model_name: str,
         language: str | None = None,
     ) -> None:
         self.args = args
         self.context = context
         self.bus = bus
         self.model_dir = model_dir
+        self.model_name = model_name
         self.language = language
 
     def transcribe(self) -> PipelineContext:
@@ -34,13 +39,10 @@ class AsrHandler:
             raise RuntimeError("no audio path in context; run audio extraction first")
 
         self.bus.log("loading whisperx model ...")
-        model = whisperx.load_model(
-            "tiny",
-            device="cpu",
-            compute_type="int8",
-            download_root=str(self.model_dir),
-            vad_method="silero",
-        )
+        start = time.perf_counter()
+        model = self._load_model()
+        elapsed = time.perf_counter() - start
+        self.bus.log(f"whisperx model loaded in {elapsed:.1f}s")
 
         self.bus.log("loading audio ...")
         audio = whisperx.load_audio(str(self.context.audio_path))
@@ -55,6 +57,28 @@ class AsrHandler:
         self.context.transcript_path = output_path
         self.bus.log(f"transcription complete: {len(segments)} segments")
         return self.context
+
+    def _load_model(self):
+        common = dict(
+            device="cpu",
+            compute_type="int8",
+            download_root=str(self.model_dir),
+            vad_method="silero",
+        )
+        try:
+            return whisperx.load_model(self.model_name, local_files_only=True, **common)
+        except LocalEntryNotFoundError:
+            self.bus.log(
+                "whisperx model not in local cache, downloading ...",
+                level="WARNING",
+            )
+            try:
+                return whisperx.load_model(self.model_name, local_files_only=False, **common)
+            except Exception as exc:
+                raise click.ClickException(
+                    "failed to download whisperx model; if the network is slow, "
+                    "set HF_ENDPOINT=https://hf-mirror.com in midterm.bat and retry"
+                ) from exc
 
     def _transcribe_chunks(self, model, audio) -> list[dict]:
         duration = len(audio) / _SAMPLE_RATE

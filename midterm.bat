@@ -7,6 +7,9 @@ rem --- Configurable paths ---
 set "INPUT=E:\S01_E01_Pilot.mp4"
 set "SUBTITLE=E:\S01_E01_Pilot.ass"
 
+rem --- Hugging Face mirror (used when model needs downloading) ---
+set "HF_ENDPOINT=https://hf-mirror.com"
+
 rem --- Validate input files ---
 if not exist "%INPUT%" (
     echo [ERROR] Input file not found: "%INPUT%"

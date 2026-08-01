@@ -157,6 +157,7 @@ def _run_pipeline(
             context,
             bus,
             model_dir=config.model_dir,
+            model_name=config.model_name,
             language=language,
         ).transcribe()
     except RuntimeError as exc:
