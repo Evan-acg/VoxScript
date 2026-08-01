@@ -24,7 +24,6 @@ _LEAD = 0.2
 _END_MARGIN = 0.1
 _GAP = 0.1
 _OVERLAP_OK = 0.5
-_APPEND_MAX_DURATION = 8.0
 _LATIN_WRAP = 42
 _CJK_WRAP = 22
 _DURATION_TOLERANCE = 0.05
@@ -107,8 +106,7 @@ def map_transcript(
     pairs = _match(a_entries, b_entries, corrector, k)
     report.matches(len(pairs))
 
-    _correct_times(b_entries, corrector, params)
-    _preserve_lead(pairs, params)
+    _align_pairs(pairs)
 
     if corrector.match_kind == "overlap":
         _handle_isolated(b_entries, a_entries, pairs, video_end, report)
@@ -116,7 +114,7 @@ def map_transcript(
     _fill_text(b_entries, a_entries, pairs, english_style, splitter)
 
     if m > n:
-        _append_extra(b_entries, a_entries, n, english_style, splitter, report)
+        _append_extra(b_entries, a_entries, pairs, english_style, splitter, report)
     elif m < n:
         _handle_missing(b_entries, a_entries, m, report)
 
@@ -231,26 +229,10 @@ def _overlap_ratio(
     return overlap / max(b_end - b_start, 1e-6)
 
 
-def _correct_times(
-    b_entries: list[_BEntry], corrector: DeviationCorrector, params: CorrectionParams
-) -> None:
-    if params.pattern in ("discrete", "cumulative"):
-        return
-    times = corrector.correct_times(
-        [(entry.start, entry.end) for entry in b_entries], params
-    )
-    for entry, (start, end) in zip(b_entries, times, strict=True):
-        entry.start, entry.end = start, end
-
-
-def _preserve_lead(
-    pairs: list[tuple[_AEntry, _BEntry]], params: CorrectionParams
-) -> None:
-    if params.pattern not in ("overall", "segmented"):
-        return
+def _align_pairs(pairs: list[tuple[_AEntry, _BEntry]]) -> None:
     for a_entry, b_entry in pairs:
-        if b_entry.start > a_entry.start:
-            b_entry.start = max(0.0, a_entry.start - _LEAD)
+        b_entry.start = a_entry.start
+        b_entry.end = a_entry.end
 
 
 def _handle_isolated(
@@ -285,8 +267,8 @@ def _handle_isolated(
                 b_entry.start, b_entry.end, a_entry.start, a_entry.end
             ),
         )
-        b_entry.start = max(0.0, closest.start - _LEAD)
-        b_entry.end = closest.end + _END_MARGIN
+        b_entry.start = closest.start
+        b_entry.end = closest.end
         b_entry.matched_a = closest.index
         b_entry.action = "overwritten"
         report.record(
@@ -363,31 +345,19 @@ def _cjk_cut(window: str) -> int:
 def _append_extra(
     b_entries: list[_BEntry],
     a_entries: list[_AEntry],
-    n: int,
+    pairs: list[tuple[_AEntry, _BEntry]],
     english_style: str,
     splitter: SentenceSplitter,
     report: _Report,
 ) -> None:
-    last = b_entries[-1]
-    extras = a_entries[n:]
-    pending = [
-        line.content for line in last.lines if line.style == english_style
-    ]
-    target_end = last.start + _APPEND_MAX_DURATION
-    remainder: list[_AEntry] = []
-    for extra in extras:
-        if extra.end > target_end:
-            remainder.append(extra)
-        else:
-            pending.append(extra.text)
-            last.end = extra.end
-            report.record(f"appended A#{extra.index} text to B#{last.source.index}")
-    _set_english_lines(last, splitter.join_text(pending).strip(), english_style, splitter)
-    for extra in remainder:
+    paired_a = {a_entry.index for a_entry, _ in pairs}
+    for extra in a_entries:
+        if extra.index in paired_a:
+            continue
         new_entry = _BEntry(
-            source=last.source,
-            start=max(0.0, extra.start - _LEAD),
-            end=extra.end + _END_MARGIN,
+            source=b_entries[-1].source,
+            start=extra.start,
+            end=extra.end,
             lines=[],
             action="appended",
             matched_a=extra.index,
@@ -395,7 +365,7 @@ def _append_extra(
         _set_english_lines(new_entry, extra.text, english_style, splitter)
         b_entries.append(new_entry)
         report.record(
-            f"extra A#{extra.index} appended as new entry: "
+            f"extra A#{extra.index} appended as new cue: "
             f"{new_entry.start}..{new_entry.end}"
         )
 
