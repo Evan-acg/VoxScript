@@ -7,15 +7,6 @@ from rich.text import Text
 from src.core.events import Event, EventType
 from src.ui.view import PanelView, StepStatus
 
-PIPELINE_STEPS = [
-    "preflight",
-    "extract_audio",
-    "load_model",
-    "transcribe",
-    "normalize_subtitles",
-    "generate_ass",
-]
-
 _ICONS = {
     StepStatus.DONE: ("\u2713", "green"),
     StepStatus.CURRENT: ("\u25c9", "yellow"),
@@ -27,10 +18,10 @@ _ICONS = {
 class StepsView(PanelView):
     def __init__(
         self,
-        steps: list[str] | None = None,
+        steps: list[str],
         console: Console | None = None,
     ) -> None:
-        self._steps = list(steps or PIPELINE_STEPS)
+        self._steps = list(steps)
         self._console = console
         self._status: dict[str, StepStatus] = {
             step: StepStatus.PENDING for step in self._steps

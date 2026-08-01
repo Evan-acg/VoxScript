@@ -23,13 +23,16 @@ class Dashboard:
         console: Console | None = None,
     ) -> None:
         self._console = console or Console()
-        self._steps_view = StepsView(steps, console=self._console)
+        self._steps_view = StepsView(steps or [], console=self._console)
         self._logs_view = LogView(console=self._console)
         self._progress_view = ProgressView(console=self._console)
         self._composer = LayoutComposer(self._console)
         self._prompt = TrackPrompt(self._console)
         self._live: Live | None = None
         bus.subscribe(self._on_event)
+
+    def set_steps(self, steps: list[str]) -> None:
+        self._steps_view = StepsView(steps, console=self._console)
 
     def start(self) -> None:
         self._live = Live(
