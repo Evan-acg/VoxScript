@@ -137,7 +137,7 @@ def _run_pipeline(
             raise click.ClickException(message)
     bus.step_completed("preflight")
 
-    context = PipelineContext()
+    context = PipelineContext(work_dir=config.work_dir)
     bus.step_started("extract_audio")
     try:
         context = AudioHandler(

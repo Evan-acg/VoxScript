@@ -1,2 +1,3 @@
 model_dir: D:\AIModel\whisper\models
 model_name: tiny
+work_dir: D:\VoxScript\Work

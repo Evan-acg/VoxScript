@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import math
-import tempfile
 import time
 from pathlib import Path
 
@@ -53,7 +52,7 @@ class AsrHandler:
         self.bus.log("transcribing audio ...")
         segments = self._transcribe_chunks(self.model, audio)
 
-        work_dir = Path(tempfile.mkdtemp(prefix="voxscript_"))
+        work_dir = self.context.run_dir
         output_path = work_dir / f"{self.args.input_path.stem}.srt"
         self._write_srt(segments, output_path)
 

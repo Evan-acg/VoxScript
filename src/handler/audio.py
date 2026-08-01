@@ -3,7 +3,6 @@ from __future__ import annotations
 import json
 import shutil
 import subprocess
-import tempfile
 from pathlib import Path
 from typing import Callable
 
@@ -36,7 +35,7 @@ class AudioHandler:
         if ffmpeg is None:
             raise RuntimeError("ffmpeg not found on PATH")
 
-        work_dir = Path(tempfile.mkdtemp(prefix="voxscript_"))
+        work_dir = self.context.run_dir
         output_path = work_dir / f"{self.args.input_path.stem}.wav"
         duration = self._probe_duration()
 

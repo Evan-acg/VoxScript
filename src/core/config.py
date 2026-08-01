@@ -12,6 +12,7 @@ DEFAULT_CONFIG_PATH = PROJECT_ROOT / "configs" / "config.yaml"
 class AppConfig(BaseModel):
     model_dir: Path
     model_name: str = "small"
+    work_dir: Path | None = None
 
     @classmethod
     def load(cls, path: Path = DEFAULT_CONFIG_PATH) -> AppConfig:
