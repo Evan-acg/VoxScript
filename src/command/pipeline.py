@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import time
 from dataclasses import dataclass
 from typing import Callable
 
@@ -32,6 +33,7 @@ class Pipeline:
         self._bus = bus
         self._context = context
         self._steps: list[Step] = []
+        self._durations: dict[str, float] = {}
 
     def add(self, name: str, run: Callable[[], PipelineContext | None]) -> "Pipeline":
         self._steps.append(Step(name, run))
@@ -42,22 +44,35 @@ class Pipeline:
         return [step.name for step in self._steps]
 
     @property
+    def durations(self) -> dict[str, float]:
+        return self._durations
+
+    @property
     def context(self) -> PipelineContext:
         return self._context
 
     def run(self) -> None:
         for step in self._steps:
+            started = time.perf_counter()
             self._bus.step_started(step.name)
             try:
                 step.run()
             except RuntimeError as exc:
                 message = str(exc)
-                self._bus.step_failed(step.name, message)
+                self._durations[step.name] = time.perf_counter() - started
+                self._bus.step_failed(
+                    step.name, message, duration=self._durations[step.name]
+                )
                 raise click.ClickException(message) from exc
             except click.ClickException as exc:
-                self._bus.step_failed(step.name, str(exc))
+                self._durations[step.name] = time.perf_counter() - started
+                self._bus.step_failed(
+                    step.name, str(exc), duration=self._durations[step.name]
+                )
                 raise
-            self._bus.step_completed(step.name)
+            duration = time.perf_counter() - started
+            self._durations[step.name] = duration
+            self._bus.step_completed(step.name, duration=duration)
 
 
 def build_pipeline(

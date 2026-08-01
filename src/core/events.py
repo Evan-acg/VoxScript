@@ -20,6 +20,7 @@ class Event:
     message: str | None = None
     level: str = "INFO"
     progress: float | None = None
+    duration: float | None = None
 
 
 Listener = Callable[[Event], None]
@@ -48,11 +49,20 @@ class EventBus:
     def step_started(self, step: str) -> None:
         self.emit(Event(type=EventType.STEP_STARTED, step=step))
 
-    def step_completed(self, step: str) -> None:
-        self.emit(Event(type=EventType.STEP_COMPLETED, step=step))
+    def step_completed(self, step: str, duration: float | None = None) -> None:
+        self.emit(Event(type=EventType.STEP_COMPLETED, step=step, duration=duration))
 
-    def step_failed(self, step: str, message: str) -> None:
-        self.emit(Event(type=EventType.STEP_FAILED, step=step, message=message))
+    def step_failed(
+        self, step: str, message: str, duration: float | None = None
+    ) -> None:
+        self.emit(
+            Event(
+                type=EventType.STEP_FAILED,
+                step=step,
+                message=message,
+                duration=duration,
+            )
+        )
 
     def set_progress(self, step: str, progress: float | None) -> None:
         self.emit(Event(type=EventType.PROGRESS, step=step, progress=progress))

@@ -15,6 +15,13 @@ class StepStatus(str, Enum):
     FAILED = "failed"
 
 
+def format_duration(seconds: float) -> str:
+    if seconds >= 60:
+        minutes, remainder = divmod(seconds, 60)
+        return f"{int(minutes)}m {remainder:.1f}s"
+    return f"{seconds:.1f}s"
+
+
 class PanelView(ABC):
     @abstractmethod
     def handle(self, event: Event) -> None:

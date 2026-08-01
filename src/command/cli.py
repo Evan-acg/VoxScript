@@ -17,6 +17,7 @@ from src.entity.context import PipelineContext
 from src.entity.proof import ProofArgs
 from src.entity.translate import LLMConfig
 from src.ui.dashboard import Dashboard
+from src.ui.view import format_duration
 
 console = Console()
 
@@ -308,6 +309,9 @@ def cli(
             parts.append((label, "bold"))
             parts.append((getter(context), "cyan"))
             parts.append(("\n", ""))
+    total = format_duration(sum(pipeline.durations.values()))
+    parts.append(("Total time: ", "bold"))
+    parts.append((total, "cyan"))
     done_panel = Panel(
         Text.assemble(*parts),
         title="Done",
