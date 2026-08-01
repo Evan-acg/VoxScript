@@ -11,8 +11,9 @@ from src.core.preflight import run_preflight_if_needed
 from src.entity.context import PipelineContext
 from src.entity.proof import ProofArgs
 from src.handler.asr import AsrHandler
-from src.handler.audio import AudioHandler, TrackSelector
+from src.handler.audio import AudioHandler
 from src.handler.subtitle import SubtitleHandler
+from src.service.audio import StreamSelector
 
 
 @dataclass(frozen=True)
@@ -60,7 +61,7 @@ def build_pipeline(
     config: AppConfig,
     force_check: bool,
     language: str | None,
-    track_selector: TrackSelector | None = None,
+    track_selector: StreamSelector | None = None,
 ) -> Pipeline:
     context = PipelineContext(work_dir=config.work_dir)
     asr = AsrHandler(
