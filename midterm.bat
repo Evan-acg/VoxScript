@@ -29,7 +29,7 @@ where uv >nul 2>&1 || (
 
 rem --- Run ---
 echo Running VoxScript...
-uv run starter.py -i "%INPUT%" -s "%SUBTITLE%" -l "%LANGUAGE%"
+uv run starter.py -i "%INPUT%" -s "%SUBTITLE%" -l "%LANGUAGE%" -t
 set "EXIT_CODE=%errorlevel%"
 if not "%EXIT_CODE%"=="0" (
     echo [ERROR] VoxScript exited with code %EXIT_CODE%.

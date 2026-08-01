@@ -19,6 +19,8 @@ class PipelineContext(BaseModel):
     split_json_path: Path | None = None
     mapped_paths: list[Path] = []
     mapping_report_paths: list[Path] = []
+    translated_paths: list[Path] = []
+    translation_report_paths: list[Path] = []
     normalized_paths: list[Path] = []
     user_subtitles: list[ParsedSubtitle] = []
     transcript_segments: list[SubtitleSegment] = []

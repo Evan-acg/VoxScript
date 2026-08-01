@@ -5,6 +5,8 @@ from pathlib import Path
 import yaml
 from pydantic import BaseModel
 
+from src.entity.translate import LLMConfig
+
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 DEFAULT_CONFIG_PATH = PROJECT_ROOT / "configs" / "config.yaml"
 
@@ -14,6 +16,7 @@ class AppConfig(BaseModel):
     model_name: str = "small"
     work_dir: Path | None = None
     english_style: str = "Eng"
+    llm: LLMConfig | None = None
 
     @classmethod
     def load(cls, path: Path = DEFAULT_CONFIG_PATH) -> AppConfig:

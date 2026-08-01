@@ -2,3 +2,12 @@ model_dir: D:\AIModel\whisper\models
 model_name: tiny
 work_dir: D:\VoxScript\Work
 english_style: Eng
+
+# LLM 翻译配置：运行加 -t/--translate 时启用；取消注释并填写后即可用
+llm:
+  provider: deepseek
+  model: deepseek-v4-flash
+  api_endpoint: https://api.deepseek.com
+  api_key_env: "{{ VOX_API_KEY }}"
+  max_lines_per_request: 30
+  temperature: 0.3

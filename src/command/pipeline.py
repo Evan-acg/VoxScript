@@ -10,11 +10,13 @@ from src.core.events import EventBus
 from src.core.preflight import run_preflight_if_needed
 from src.entity.context import PipelineContext
 from src.entity.proof import ProofArgs
+from src.entity.translate import LLMConfig
 from src.handler.asr import AsrHandler
 from src.handler.audio import AudioHandler
 from src.handler.map import MapHandler
 from src.handler.split import SplitHandler
 from src.handler.subtitle import SubtitleHandler
+from src.handler.translate import TranslateHandler
 from src.service.audio import StreamSelector
 
 
@@ -64,6 +66,7 @@ def build_pipeline(
     force_check: bool,
     language: str | None,
     track_selector: StreamSelector | None = None,
+    llm_config: LLMConfig | None = None,
 ) -> Pipeline:
     context = PipelineContext(work_dir=config.work_dir)
     asr = AsrHandler(
@@ -106,7 +109,18 @@ def build_pipeline(
             english_style=config.english_style,
         ).map_timelines()
 
-    return (
+    def translate_subtitles() -> None:
+        if llm_config is None:
+            raise RuntimeError("LLM config is required for translation")
+        TranslateHandler(
+            args,
+            context,
+            bus,
+            config=llm_config,
+            source_style=config.english_style,
+        ).translate()
+
+    pipeline = (
         Pipeline(bus, context)
         .add("preflight", preflight)
         .add("extract_audio", extract_audio)
@@ -116,3 +130,6 @@ def build_pipeline(
         .add("split_transcript", split_transcript)
         .add("map_timeline", map_timeline)
     )
+    if llm_config is not None:
+        pipeline.add("translate_subtitles", translate_subtitles)
+    return pipeline
