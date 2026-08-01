@@ -12,6 +12,7 @@ from src.entity.context import PipelineContext
 from src.entity.proof import ProofArgs
 from src.handler.asr import AsrHandler
 from src.handler.audio import AudioHandler
+from src.handler.split import SplitHandler
 from src.handler.subtitle import SubtitleHandler
 from src.service.audio import StreamSelector
 
@@ -92,6 +93,9 @@ def build_pipeline(
     def normalize_subtitles() -> None:
         SubtitleHandler(args, context, bus).normalize()
 
+    def split_transcript() -> None:
+        SplitHandler(args, context, bus, language=language).split()
+
     return (
         Pipeline(bus, context)
         .add("preflight", preflight)
@@ -99,4 +103,5 @@ def build_pipeline(
         .add("load_model", asr.load_model)
         .add("transcribe", asr.transcribe)
         .add("normalize_subtitles", normalize_subtitles)
+        .add("split_transcript", split_transcript)
     )

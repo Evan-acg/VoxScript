@@ -16,6 +16,7 @@ class PipelineContext(BaseModel):
     audio_track: int | None = None
     transcript_path: Path | None = None
     transcript_normalized_path: Path | None = None
+    split_json_path: Path | None = None
     normalized_paths: list[Path] = []
     user_subtitles: list[ParsedSubtitle] = []
     transcript_segments: list[SubtitleSegment] = []
